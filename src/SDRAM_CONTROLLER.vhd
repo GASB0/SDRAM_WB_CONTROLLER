@@ -73,8 +73,7 @@ architecture behavior of SDRAM_CONTROLLER is
     signal busy : std_logic := '0';
     signal rst_done, rst_done_q, i_WB_STB_q, begin_RW : std_logic := '0';
     signal rst_cnt  : unsigned(31 downto 0) := (others => '0');
-    signal dq_oen : std_logic := '0';
-    signal dq_out : std_logic_vector(io_DQ'length-1 downto 0);
+    signal dq_out, dq_in : std_logic_vector(io_DQ'length-1 downto 0);
 
     signal din_latch  : std_logic_vector(i_WB_DAT'length-1 downto 0);
     signal addr_latch : std_logic_vector(i_WB_ADDR'length-1 downto 0);
@@ -85,8 +84,10 @@ begin
     o_WB_ACK <= '0' when i_WB_STB = '0' else
                 '1' when r_RW_STATE = FINISHING_RW;
 
-    io_DQ <= (others => 'Z') when dq_oen = '1' else
+    io_DQ <= (others => 'Z') when i_WB_WE = '0' else
              dq_out;
+
+    dq_in <= io_DQ;
 
     -- Wiring the command register
     o_CSn  <= RAM_CMD(3);
@@ -115,12 +116,10 @@ begin
             -- Controller logic
             if not(resetn) then
                 busy          <= '1';
-                dq_oen        <= '1';
                 SDRAM_DQM     <= "10";
                 r_SDRAM_STATE <= s_INIT_DELAY;
             else 
                 -- defaults
-                dq_oen <= '1';
                 SDRAM_DQM <= "11";
                 RAM_CMD <= CMD_NOP; 
 
@@ -186,7 +185,7 @@ begin
 
                         -- RW logic
                         case r_RW_STATE is
-                          when WAITING_RW_OPERATION =>
+                          when WAITING_RW_OPERATION => -- Waiting for RW
                             -- Refresh logic
                             if need_refresh='1' and i_WB_CYC='0' then
                               refresh_cnt <= to_unsigned(0, refresh_cnt'length);
@@ -197,7 +196,6 @@ begin
                               RAM_CMD <= CMD_Write when i_WB_WE='1' else
                                          CMD_Read;         
                               if i_WB_WE = '1' then
-                                dq_oen <= '0';
                                 dq_out <= din_latch(dq_out'length-1 downto 0);
                               end if;
                               o_ADDR <= "0010"&addr_latch(9 downto 1); -- Autoprecharged
@@ -205,7 +203,7 @@ begin
                               r_RW_STATE <= EXECUTING_RW;
                             end if;
 
-                          when REFRESHING =>
+                          when REFRESHING => -- Waiting for the refresh time to pass
                             if v_CLK_CNT = 2 then
                               r_RW_STATE <= WAITING_RW_OPERATION;
                               v_CLK_CNT := (others => '0');
@@ -213,7 +211,7 @@ begin
                               v_CLK_CNT := v_CLK_CNT + 1;
                             end if;           
 
-                          when EXECUTING_RW =>
+                          when EXECUTING_RW => -- Waiting for the RW time to pass
                             if v_CLK_CNT = 2 then
                               r_RW_STATE <= FINISHING_RW;
                               v_CLK_CNT := (others => '0');
@@ -222,7 +220,8 @@ begin
                             end if;           
 
                           when FINISHING_RW =>
-                            -- write the retrieved data in the output port
+                            -- writing the retrieved data in the output port
+                            o_WB_DAT(io_DQ'length-1 downto 0) <= dq_in when i_WB_WE = '0';
                             r_RW_STATE <= WAITING_RW_OPERATION;
                           when others =>
                         end case;
