@@ -130,9 +130,9 @@ architecture behavior of tb_SDRAM_SIM is
   -- Test data
   type data_array is array (0 to 19) of std_logic_vector(31 downto 0);
   constant test_data : data_array := (
-    x"000000AA", x"00000002", x"00000003", x"00000004", x"00000005",
-    x"00000006", x"00000007", x"00000008", x"00000009", x"0000000A",
-    x"0000000B", x"0000000C", x"0000000D", x"0000000E", x"0000000F",
+    x"000000A0", x"000000A1", x"000000A2", x"000000A3", x"000000A4",
+    x"000000A5", x"000000A6", x"000000A7", x"000000A8", x"000000A9",
+    x"000000AA", x"0000000C", x"0000000D", x"0000000E", x"0000000F",
     x"00000010", x"00000011", x"00000012", x"00000013", x"00000014"
     );
 
@@ -142,7 +142,7 @@ architecture behavior of tb_SDRAM_SIM is
 
   -- State machine
   type state_type is (s_reset, s_write, s_read, s_done, s_write_stb, s_read_stb);
-  signal state : state_type := s_reset;
+  signal state : state_type := s_write;
 
   signal delay_passed : std_logic             := '0';
   signal init_cnt     : unsigned(31 downto 0) := (others => '0');
@@ -153,7 +153,7 @@ begin
 
   --delay_passed <= '1' when init_cnt = 25000;
   -- this short delay is for simulation only
-  delay_passed <= '1' after 2 us; -- this is for the PLL to lock
+  delay_passed <= '1' after 3 us; -- this is for the PLL to lock
   
   MAIN_CLK_GEN : process
   begin
@@ -273,7 +273,7 @@ begin
         -- Write state: Prepare data and assert STB
         when s_write =>
           s_WB_RST               <= '0';
-          s_WB_ADDR(15 downto 0) <= std_ulogic_vector(write_index);  -- Address
+          s_WB_ADDR(write_index'length-1 downto 0) <= std_ulogic_vector(write_index);  -- Address
           s_WB_DAT_i             <= std_ulogic_vector(test_data(to_integer(write_index)));  -- Data to write
           s_WB_WE                <= '1';  -- Enable write
           s_WB_CYC               <= '1';

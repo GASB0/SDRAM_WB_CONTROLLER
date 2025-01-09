@@ -42,8 +42,8 @@ architecture behavior of SDRAM_CONTROLLER is
 
     -- Counter threshold constants for each state
     constant PRECHARGE_ALL_CYCLES : integer := 3;
-    constant AUTO_REFRESH_CYCLES  : integer := 5;
-    constant SET_MODE_REG_CYCLES  : integer := 3;
+    constant AUTO_REFRESH_CYCLES  : integer := 4;
+    constant SET_MODE_REG_CYCLES  : integer := 1;
 
     -- Defining SDRAM commands
     -- CS# RAS# CAS# WE#
@@ -145,7 +145,7 @@ begin
                     -- Issuing initial setup commands
                       case r_SETUP_STATE is
                         when s_PRECHARGE_ALL =>
-                          if v_CLK_CNT = 2 then
+                          if v_CLK_CNT = PRECHARGE_ALL_CYCLES then
                             r_SETUP_STATE <= s_AUTO_REFRESH1;
                             RAM_CMD <= CMD_AutoRefresh;
                             v_CLK_CNT := (others => '0');
@@ -154,7 +154,7 @@ begin
                           end if;
                           
                         when s_AUTO_REFRESH1 =>
-                          if v_CLK_CNT = 2 then
+                          if v_CLK_CNT = AUTO_REFRESH_CYCLES then
                             r_SETUP_STATE <= s_AUTO_REFRESH2;
                             RAM_CMD <= CMD_AutoRefresh;
                             v_CLK_CNT := (others => '0');
@@ -163,7 +163,7 @@ begin
                           end if;
 
                         when s_AUTO_REFRESH2=>
-                          if v_CLK_CNT = 2 then
+                          if v_CLK_CNT = AUTO_REFRESH_CYCLES then
                             r_SETUP_STATE <= s_SET_MODE_REG;
                             RAM_CMD <= CMD_SetModeReg;
 
@@ -180,7 +180,7 @@ begin
                           end if;
 
                         when s_SET_MODE_REG =>
-                          if v_CLK_CNT = 2 then
+                          if v_CLK_CNT = SET_MODE_REG_CYCLES then
                             r_SETUP_STATE <= s_INIT_CONFIG_DONE; 
                             v_CLK_CNT := (others => '0');
                           else
@@ -230,7 +230,7 @@ begin
                             if v_CLK_CNT = 2 then
                               RAM_CMD <= CMD_Write when we_latch='1' else
                                          CMD_Read;
-                              o_SDRAM_DQM <= "00" when we_latch='1';
+                              o_SDRAM_DQM <= "00";
                               
                               r_RW_STATE <= EXECUTING_RW;
                               v_CLK_CNT := (others => '0');
@@ -239,17 +239,25 @@ begin
                             end if;
 
                           when EXECUTING_RW => -- Waiting for the RW time to pass
-                            if v_CLK_CNT = 2 then
+                            if v_CLK_CNT = 1 then
                               r_RW_STATE <= FINISHING_RW;
                               v_CLK_CNT := (others => '0');
                             else
                               v_CLK_CNT := v_CLK_CNT + 1;
-                            end if;           
+                            end if;
 
-                          when FINISHING_RW =>
                             -- writing the retrieved data in the output port
                             o_WB_DAT(io_DQ'length-1 downto 0) <= dq_in when i_WB_WE = '0';
-                            r_RW_STATE <= WAITING_RW_OPERATION;
+
+                          when FINISHING_RW => 
+                            -- Waiting for the precharge to finish and getting back to idle
+                            if v_CLK_CNT = 1 then
+                              r_RW_STATE <= WAITING_RW_OPERATION;
+                              v_CLK_CNT := (others => '0');
+                            else
+                              v_CLK_CNT := v_CLK_CNT + 1;
+                            end if;
+
                           when others =>
                         end case;
 
