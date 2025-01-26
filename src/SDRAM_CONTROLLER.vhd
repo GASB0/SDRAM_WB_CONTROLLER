@@ -27,7 +27,7 @@ entity SDRAM_CONTROLLER is
         i_WB_ADDR : in  std_ulogic_vector( 31 downto 0 );
         i_WB_DAT  : in  std_ulogic_vector( 31 downto 0 );
         o_WB_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');
-        i_WB_RST  : in  std_ulogic;
+        o_WB_RTY  : out std_ulogic;
         i_WB_SEL  : in  std_ulogic_vector( 3 downto 0 );
         i_WB_STB  : in  std_ulogic;
         i_WB_WE   : in  std_ulogic;
@@ -82,8 +82,11 @@ architecture behavior of SDRAM_CONTROLLER is
 begin
 
     -- Inferred Latch for the ACK signal
-    o_WB_ACK <= '0' when i_WB_STB = '0' else
-                '1' when r_RW_STATE = FINISHING_RW;
+    o_WB_ACK <= '1' when i_WB_CYC='1' and r_RW_STATE = FINISHING_RW else
+                '0';
+
+    o_WB_RTY <= '1' when r_SDRAM_STATE=s_NORMAL and r_RW_STATE = WAITING_RW_OPERATION else
+                '0';
 
     io_DQ <= (others => 'Z') when i_WB_WE = '0' else
              dq_out;
@@ -203,14 +206,16 @@ begin
                         case r_RW_STATE is
                           when WAITING_RW_OPERATION => -- Waiting for RW
                             -- Refresh logic
-                            if need_refresh='1' and i_WB_STB='0' then
+                            if need_refresh='1' then -- Need to fix this condition
                               refresh_cnt <= to_unsigned(0, refresh_cnt'length);
+                              -- need to precharge all banks before issuing the
+                              -- auto refresh
                               RAM_CMD <= CMD_AutoRefresh;
                               r_RW_STATE <= REFRESHING;
                             -- RW operations logic
                             elsif begin_RW='1' then
                               RAM_CMD <= CMD_BankActivate;
-                              if i_WB_WE = '1' then
+                              if we_latch = '1' then
                                 dq_out <= din_latch(dq_out'length-1 downto 0);
                               end if;
                               o_ADDR <= "0010"&addr_latch(8 downto 0); -- Autoprecharged
@@ -219,7 +224,7 @@ begin
                             end if;
 
                           when REFRESHING => -- Waiting for the refresh time to pass
-                            if v_CLK_CNT = 2 then
+                            if v_CLK_CNT = 8 then
                               r_RW_STATE <= WAITING_RW_OPERATION;
                               v_CLK_CNT := (others => '0');
                             else
@@ -278,13 +283,6 @@ begin
           i_WB_STB_qq <= i_WB_STB_q;
           v_begin_RW := i_WB_STB and not(i_WB_STB_q);
           begin_RW <= '0' when r_RW_STATE = WAITING_RW_OPERATION and need_refresh = '0';
-
-          -- this is the section to get all the latches to their default values
-          if i_WB_STB='0' then
-            addr_latch <= (others => '0');
-            din_latch  <= (others => '0');
-            we_latch   <= '0';
-          end if;
 
           -- detect when chip is accessed and latch data from the ports
           if v_begin_RW then

@@ -1,10 +1,8 @@
 library ieee;
-library work;
-LIBRARY FMF; 
+library fmf; 
 
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.all;
 
 entity tb_SDRAM_SIM is
 end tb_SDRAM_SIM;
@@ -76,7 +74,7 @@ architecture behavior of tb_SDRAM_SIM is
       i_WB_ADDR : in  std_ulogic_vector(31 downto 0);
       i_WB_DAT  : in  std_ulogic_vector(31 downto 0);
       o_WB_DAT  : out std_ulogic_vector(31 downto 0) := (others => '0');
-      i_WB_RST  : in  std_ulogic;
+      o_WB_RTY  : out std_ulogic;
       i_WB_SEL  : in  std_ulogic_vector(3 downto 0);
       i_WB_STB  : in  std_ulogic;
       i_WB_WE   : in  std_ulogic;
@@ -110,7 +108,7 @@ architecture behavior of tb_SDRAM_SIM is
   signal s_WB_ADDR  : std_ulogic_vector(31 downto 0) := (others => '0');
   signal s_WB_DAT_i : std_ulogic_vector(31 downto 0) := (others => '0');
   signal s_WB_DAT_o : std_ulogic_vector(31 downto 0) := (others => '0');
-  signal s_WB_RST   : std_ulogic                     := '0';
+  signal s_WB_RTY   : std_ulogic;
   signal s_WB_SEL   : std_ulogic_vector(3 downto 0)  := (others => '0');
   signal s_WB_STB   : std_ulogic                     := '0';
   signal s_WB_WE    : std_ulogic                     := '0';
@@ -132,8 +130,8 @@ architecture behavior of tb_SDRAM_SIM is
   constant test_data : data_array := (
     x"000000A0", x"000000A1", x"000000A2", x"000000A3", x"000000A4",
     x"000000A5", x"000000A6", x"000000A7", x"000000A8", x"000000A9",
-    x"000000AA", x"0000000C", x"0000000D", x"0000000E", x"0000000F",
-    x"00000010", x"00000011", x"00000012", x"00000013", x"00000014"
+    x"000000AA", x"000000AB", x"000000AC", x"000000AD", x"000000AE",
+    x"000000AF", x"00000A10", x"00000A11", x"00000A12", x"00000A13"
     );
 
   -- Counters
@@ -150,7 +148,6 @@ architecture behavior of tb_SDRAM_SIM is
   constant CLK_PERIOD : time := 20 ns;
 
 begin
-
   --delay_passed <= '1' when init_cnt = 25000;
   -- this short delay is for simulation only
   delay_passed <= '1' after 3 us; -- this is for the PLL to lock
@@ -243,7 +240,7 @@ begin
       i_WB_ADDR => s_WB_ADDR,
       i_WB_DAT  => s_WB_DAT_i,
       o_WB_DAT  => s_WB_DAT_o,
-      i_WB_RST  => s_WB_RST,
+      o_WB_RTY  => s_WB_RTY,
       i_WB_SEL  => s_WB_SEL,
       i_WB_STB  => s_WB_STB,
       i_WB_WE   => s_WB_WE,
@@ -265,20 +262,20 @@ begin
       case state is
         -- Reset state
         when s_reset =>
-          s_WB_RST <= '1';
           s_WB_CYC <= '0';
           s_WB_STB <= '0';
           state    <= s_write;
 
         -- Write state: Prepare data and assert STB
         when s_write =>
-          s_WB_RST               <= '0';
-          s_WB_ADDR(write_index'length-1 downto 0) <= std_ulogic_vector(write_index);  -- Address
-          s_WB_DAT_i             <= std_ulogic_vector(test_data(to_integer(write_index)));  -- Data to write
-          s_WB_WE                <= '1';  -- Enable write
-          s_WB_CYC               <= '1';
-          s_WB_STB               <= '1';  -- Assert STB
-          state                  <= s_write_stb;
+          if s_WB_RTY = '1' then
+            s_WB_ADDR(write_index'length-1 downto 0) <= std_ulogic_vector(write_index);  -- Address
+            s_WB_DAT_i             <= std_ulogic_vector(test_data(to_integer(write_index)));  -- Data to write
+            s_WB_WE                <= '1';  -- Enable write
+            s_WB_CYC               <= '1';
+            s_WB_STB               <= '1';  -- Assert STB
+            state                  <= s_write_stb;
+          end if;
 
         -- Wait for ACK during write
         when s_write_stb =>
