@@ -1,4 +1,3 @@
--- TODO: Simulate me!
 -- fclk  Delayed write   clkref
 --       CPU      VRAM  
 --     ----------------------
@@ -57,18 +56,6 @@ entity SDRAM_CONTROLLER is
         o_CKE       : out std_logic;
         resetn      : in std_logic := '1';
 
-        -- Graphics controller access
-        o_WB_GC_ACK  : out std_ulogic;
-        i_WB_GC_CLK  : in  std_ulogic;
-        i_WB_GC_ADDR : in  std_ulogic_vector( 31 downto 0 );
-        i_WB_GC_DAT  : in  std_ulogic_vector( 31 downto 0 );
-        o_WB_GC_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');
-        o_WB_GC_RTY  : out std_ulogic;
-        i_WB_GC_SEL  : in  std_ulogic_vector( 3 downto 0 );
-        i_WB_GC_STB  : in  std_ulogic;
-        i_WB_GC_WE   : in  std_ulogic;
-        i_WB_GC_CYC  : in  std_ulogic;
-
         -- CPU access (WISHBONE SLAVE interface)
         o_WB_CPU_ACK  : out std_ulogic;
         i_WB_CPU_CLK  : in  std_ulogic;
@@ -79,14 +66,26 @@ entity SDRAM_CONTROLLER is
         i_WB_CPU_SEL  : in  std_ulogic_vector( 3 downto 0 );
         i_WB_CPU_STB  : in  std_ulogic;
         i_WB_CPU_WE   : in  std_ulogic;
-        i_WB_CPU_CYC  : in  std_ulogic
+        i_WB_CPU_CYC  : in  std_ulogic; 
+
+        -- Graphics controller access
+        o_WB_GC_ACK  : out std_ulogic;
+        i_WB_GC_CLK  : in  std_ulogic;
+        i_WB_GC_ADDR : in  std_ulogic_vector( 31 downto 0 );
+        i_WB_GC_DAT  : in  std_ulogic_vector( 31 downto 0 );
+        o_WB_GC_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');
+        o_WB_GC_RTY  : out std_ulogic;
+        i_WB_GC_SEL  : in  std_ulogic_vector( 3 downto 0 );
+        i_WB_GC_STB  : in  std_ulogic;
+        i_WB_GC_WE   : in  std_ulogic;
+        i_WB_GC_CYC  : in  std_ulogic
     );
 
 end SDRAM_CONTROLLER;
 
 architecture behavior of SDRAM_CONTROLLER is 
     constant REFRESH_CYCLES : unsigned(9 downto 0) := to_unsigned(500, 10);
-    constant FREQ : integer := 100_000_000;
+    constant FREQ : integer := 96_000_000;
 
     -- Counter threshold constants for each state
     constant PRECHARGE_ALL_CYCLES : integer := 3;
@@ -103,9 +102,12 @@ architecture behavior of SDRAM_CONTROLLER is
     constant CMD_AutoRefresh  : std_logic_vector(3 downto 0) := "0001";
     constant CMD_PreCharge    : std_logic_vector(3 downto 0) := "0010";
 
+    type SDRAM_COMMAND is (NOP, SetModeReg, BankActivate, Write, Read, AutoRefresh, PreCharge);
+    signal d_RAM_CMD : SDRAM_COMMAND;
+
     type SDRAM_STATE is (s_INIT_DELAY, s_SETUP, s_NORMAL);
     type SETUP_STATE is (s_PRECHARGE_ALL, s_AUTO_REFRESH1, s_AUTO_REFRESH2, s_SET_MODE_REG, s_INIT_CONFIG_DONE);
-    type RW_STATE is (WAITING_RW_OPERATION, REFRESHING, EXECUTING_ACTIVATE, EXECUTING_RW, FINISHING_RW);
+    type RW_STATE    is (WAITING_RW_OPERATION, REFRESHING, EXECUTING_ACTIVATE, EXECUTING_RW, FINISHING_RW);
 
     signal r_RW_STATE : RW_STATE := WAITING_RW_OPERATION;
 
@@ -115,7 +117,7 @@ architecture behavior of SDRAM_CONTROLLER is
     signal RAM_CMD : std_logic_vector(3 downto 0) := CMD_NOP; -- Command register for RAM
     signal cfg_now : std_logic := '0'; -- 200 us flag signal
 
-    signal cycle : STD_LOGIC_VECTOR(11 downto 0) := (0=>'1', others =>'0');
+    signal cycle : unsigned(7 downto 0) := (others => '0');
 
     -- Helper signals?
     signal need_refresh : std_logic := '0';
@@ -127,6 +129,14 @@ architecture behavior of SDRAM_CONTROLLER is
     signal cpu_dout_buff : std_logic_vector(31 downto 0);
 
     type std_logic_matrix is array (natural range <>) of std_logic_vector;
+    signal din_next      : std_logic_matrix(0 to 1)(i_WB_CPU_DAT'length-1 downto 0);
+    signal addr_next     : std_logic_matrix(0 to 1)(i_WB_CPU_ADDR'length-1 downto 0);
+    signal ds_next       : std_logic_matrix(0 to 1)(3 downto 0);
+    signal port_req_next : std_logic_vector(0 to 1) := (others => '0');
+    signal we_next       : std_logic_vector(0 to 1) := (others => '0');
+    signal oe_next       : std_logic_vector(0 to 1);
+    signal ack_next      : std_logic_vector(0 to 1) := (others => '0');
+
     signal din_latch      : std_logic_matrix(0 to 1)(i_WB_CPU_DAT'length-1 downto 0);
     signal addr_latch     : std_logic_matrix(0 to 1)(i_WB_CPU_ADDR'length-1 downto 0);
     signal ds_latch       : std_logic_matrix(0 to 1)(3 downto 0);
@@ -164,7 +174,27 @@ begin
     o_SDRAM_READY <= '1' when r_SDRAM_STATE = s_NORMAL else
                      '0';
 
-    oe_latch <= not(we_latch);
+    -- Returning command names for debugging purposes
+    process(RAM_CMD)
+    begin
+        case RAM_CMD is
+            when "1111" =>
+                d_RAM_CMD <= NOP;
+            when "0000" =>
+                d_RAM_CMD <= SetModeReg;
+            when "0011" =>
+                d_RAM_CMD <= BankActivate;
+            when "0100" =>
+                d_RAM_CMD <= Write;
+            when "0101" =>
+                d_RAM_CMD <= Read;
+            when "0001" =>
+                d_RAM_CMD <= AutoRefresh;
+            when "0010" =>
+                d_RAM_CMD <= PreCharge;
+            when others =>
+        end case;
+    end process;
 
     -- I think that the ACK signal only lasts for like one clock cycle
     -- so I could get rid of the i_WB_*_CYC dependence for the latches
@@ -184,19 +214,20 @@ begin
     wb_latching: for i in 0 to 1 generate
         process(controller_ports(i).cyc)
         begin
-            port_req_latch(i) <= '0';
-            we_latch(i)       <= '0';
-            ds_latch(i)       <= (others => '0'); 
-            din_latch(i)      <= (others => '0');
-            addr_latch(i)     <= (others => '0');
+            port_req_next(i) <= '0';
+            we_next(i)       <= '0';
+            ds_next(i)       <= (others => '0'); 
+            din_next(i)      <= (others => '0');
+            addr_next(i)     <= (others => '0');
 
             if controller_ports(i).cyc and controller_ports(i).stb then
             -- Set request flag
-                port_req_latch(i) <= '1';
-                we_latch(i)       <= controller_ports(i).we;
-                ds_latch(i)       <= controller_ports(i).sel; 
-                din_latch(i)      <= controller_ports(i).wdata;
-                addr_latch(i)     <= controller_ports(i).addr;
+                port_req_next(i) <= '1';
+                we_next(i)       <= controller_ports(i).we;
+                ds_next(i)       <= controller_ports(i).sel; 
+                din_next(i)      <= controller_ports(i).wdata;
+                addr_next(i)     <= controller_ports(i).addr;
+                oe_next(i) <= not(we_next(i));
             end if;
         end process;
     end generate wb_latching;
@@ -234,7 +265,6 @@ begin
     STATE_MACHINE: process(i_CLK)
     -- This variable enables me to count the number of cycles I've been in a state
         variable v_CLK_CNT : unsigned(7 downto 0) := (others => '0');
-        variable v_delayed_write : std_logic := '0';
     begin
         if rising_edge(i_CLK) then
             -- Controller logic
@@ -330,56 +360,79 @@ begin
 
                         -- It could be that you can only get here whenever there's a port request
                         case cycle is
-                            when "000000000001" => -- 0
-                            -- Check if we need some delayed_write
-                                delayed_write <= '1' when we_latch="01" else
+                            when TO_UNSIGNED(0, cycle'length) => -- 0
+                                -- Check if we need some delayed_write
+                                delayed_write <= '1' when we_next="01" else
                                                  '0';
+
+                                -- Latching CPU access related signals
+                                din_latch(0)      <= din_next(0);
+                                addr_latch(0)     <= addr_next(0);
+                                ds_latch(0)       <= ds_next(0);
+                                port_req_latch(0) <= port_req_next(0);
+                                we_latch(0)       <= we_next(0);
+                                oe_latch(0)       <= oe_next(0);
+
                                 -- CPU RAS
-                                RAM_CMD <= CMD_BankActivate;
-                                o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                o_ADDR <= "0010"&addr_next(0)(8 downto 0);
                                 o_BS   <= "00";
 
-                            when "000000000010" => -- 1
+                                -- TODO: add condition here to signal whether
+                                -- or not a port request has been made and is going
+                                -- to be processed in the next cycles
+                                RAM_CMD <= CMD_BankActivate when port_req_next(0) = '1';
+
+                            when to_unsigned(1, cycle'length) => -- 1
                                 if not(delayed_write) then
                                 -- VRAM RAS
-                                    RAM_CMD <= CMD_BankActivate;
+                                    --RAM_CMD <= CMD_BankActivate;
                                 else
                                 -- NOP
                                 end if;
-                            when "000000000100" => -- 2
-                                if not(delayed_write) then
+                            when to_unsigned(2, cycle'length) => -- 2
                                 -- CPU R/W
-                                    RAM_CMD <= CMD_Write when true else
-                                               CMD_Read;
-                                else
-                                -- CPU READ
-                                    RAM_CMD <= CMD_Read;
-                                    o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                if (we_latch(0) or oe_latch(0)) then
+                                    if we_latch(0)='1' then
+                                        RAM_CMD <=CMD_Write;
+                                        dq_out  <= din_latch(0);
+                                    else
+                                        RAM_CMD <= CMD_Read;
+                                    end if;
                                 end if;
-                            when "000000001000" => -- 3
+
+                            when to_unsigned(3, cycle'length) => -- 3
                                 if not(delayed_write) then
                                 -- VRAM READ
-                                    RAM_CMD <= CMD_Read;
+                                    --RAM_CMD <= CMD_Read;
                                 else
-                                -- VRAM RAS
-                                    RAM_CMD <= CMD_BankActivate;
-                                    o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                    -- Latching VRAM access related signals
+                                    din_latch(1)      <= din_next(1);
+                                    addr_latch(1)     <= addr_next(1);
+                                    ds_latch(1)       <= ds_next(1);
+                                    port_req_latch(1) <= port_req_next(1);
+                                    we_latch(1)       <= we_next(1);
+                                    oe_latch(1)       <= oe_next(1);
+
+                                    -- VRAM RAS
+                                    o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
+                                    RAM_CMD <= CMD_BankActivate when port_req_next(1);
                                 end if;
-                            when "000000010000" => -- 4
+                            when to_unsigned(4, cycle'length)  => -- 4
                                 if not(delayed_write) then
                                 -- CPU <LZ>
                                 else
                                 -- CPU <LZ>
                                 end if;
-                            when "000000100000" => -- 5
+                            when to_unsigned(5, cycle'length) => -- 5
                                 if not(delayed_write) then
                                 -- CPU DATA
                                 else
                                 -- CPU DATA
                                     cpu_dout_buff(15 downto 0) <= dq_in;
                                 end if;
-                            when "000001000000" => -- 6
+                            when to_unsigned(6, cycle'length) => -- 6
                                 if not(delayed_write) then
                                 -- VRAM DATA
                                 else
@@ -388,16 +441,16 @@ begin
                                     ack_latch(0) <= '1';
                                     cpu_dout_buff(31 downto 16) <= dq_in;
                                 end if;
-                            when "000010000000" => -- 7
+                            when to_unsigned(7, cycle'length) => -- 7
                                 if not(delayed_write) then
                                 -- NOP
                                 else
-                                -- NOP
-                                    o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
-                                    RAM_CMD <=CMD_Write;
-                                    dq_out <= din_latch(1)(15 downto 0); -- Writing port 2 data
+                                    -- VRAM access
+                                    o_ADDR  <= "0010"&addr_latch(1)(8 downto 0);
+                                    dq_out  <= din_latch(1)(15 downto 0); -- Writing port 2 data
+                                    RAM_CMD <= CMD_Write when port_req_latch(1) = '1';
                                 end if;
-                            when "000100000000" => -- 8
+                            when to_unsigned(8, cycle'length) => -- 8
                                 if not(delayed_write) then
                                 -- NOP
                                 else
@@ -405,19 +458,19 @@ begin
                                     ack_latch(1) <= '1';
                                     dq_out <= din_latch(1)(31 downto 16); -- Writing port 2 data
                                 end if;
-                            when "001000000000" => -- 9
+                            when to_unsigned(9, cycle'length) => -- 9
                                 if not(delayed_write) then
                                 -- NOP
                                 else
                                 -- VRAM AP
                                 end if;
-                            when "010000000000" => -- 10
+                            when to_unsigned(10, cycle'length) => -- 10
                                 if not(delayed_write) then
                                 -- NOP
                                 else
                                 -- NOP
                                 end if;
-                            when "100000000000" => -- 11
+                            when to_unsigned(11, cycle'length) => -- 11
                                 if not(delayed_write) then
                                     -- NOP
                                 else
@@ -428,11 +481,11 @@ begin
                         end case;
 
                         -- Cycle counting logic
-                        cycle <= cycle(cycle'length-2 downto 0)&"0"; -- Shifting cycle
+                        cycle <= cycle + 1;
                         if delayed_write then
-                            cycle <= (0=>'1', others => '0') when cycle(cycle'length-1) = '1';
+                            cycle <= (others => '0') when cycle = 12;
                         else
-                            cycle <= (0=>'1', others => '0') when cycle(7) = '1';
+                            cycle <= (others => '0') when cycle = 7;
                         end if;
 
                     when others =>
