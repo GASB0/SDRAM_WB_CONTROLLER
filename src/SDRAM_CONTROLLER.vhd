@@ -126,7 +126,7 @@ architecture behavior of SDRAM_CONTROLLER is
     signal rst_done, rst_done_q, i_WB_STB_q, i_WB_STB_qq, begin_RW : std_logic := '0';
     signal rst_cnt  : unsigned(31 downto 0) := (others => '0');
     signal dq_out, dq_in : std_logic_vector(io_DQ'length-1 downto 0);
-    signal cpu_dout_buff : std_logic_vector(31 downto 0);
+    signal gc_dout_buff, cpu_dout_buff : std_logic_vector(31 downto 0);
 
     type std_logic_matrix is array (natural range <>) of std_logic_vector;
     signal din_next      : std_logic_matrix(0 to 1)(i_WB_CPU_DAT'length-1 downto 0);
@@ -233,8 +233,9 @@ begin
     end generate wb_latching;
 
 
---    io_DQ <= (others => 'Z') when i_WB_WE = '0' else
+--    io_DQ <= (others => 'Z') when we_latch(0) = '0' or we_latch(1) = '0' else
 --             dq_out;
+    io_DQ <= dq_out;
 
     dq_in <= io_DQ;
 
@@ -274,7 +275,7 @@ begin
                 r_SDRAM_STATE <= s_INIT_DELAY;
             else 
                 -- defaults
-                o_SDRAM_DQM <= "11";
+                o_SDRAM_DQM <= "00";
                 RAM_CMD <= CMD_NOP; 
 
                 case r_SDRAM_STATE is
@@ -320,7 +321,7 @@ begin
 
                             -- Setting the RAM mode before continuing
                             o_ADDR <= (others => '0'); -- zeroing everything
-                            o_ADDR(2 downto 0) <= "000"; -- burst length=1
+                            o_ADDR(2 downto 0) <= "001"; -- burst length=2
                             o_ADDR(3) <= '0'; -- sequential addressing
                             o_ADDR(6 downto 4) <= "010"; -- CAS 2
                             o_ADDR(9) <= '0';
@@ -362,16 +363,18 @@ begin
                         case cycle is
                             when TO_UNSIGNED(0, cycle'length) => -- 0
                                 -- Check if we need some delayed_write
-                                delayed_write <= '1' when we_next="01" else
+                                delayed_write <= '1' when we_next="01" and port_req_next="11" else
                                                  '0';
 
-                                -- Latching CPU access related signals
-                                din_latch(0)      <= din_next(0);
-                                addr_latch(0)     <= addr_next(0);
-                                ds_latch(0)       <= ds_next(0);
-                                port_req_latch(0) <= port_req_next(0);
-                                we_latch(0)       <= we_next(0);
-                                oe_latch(0)       <= oe_next(0);
+                                -- Latching CPU and GC access related signals
+                                for i in 0 to 1 loop
+                                    din_latch(i)      <= din_next(i);
+                                    addr_latch(i)     <= addr_next(i);
+                                    ds_latch(i)       <= ds_next(i);
+                                    port_req_latch(i) <= port_req_next(i);
+                                    we_latch(i)       <= we_next(i);
+                                    oe_latch(i)       <= oe_next(i);
+                                end loop;
 
                                 -- CPU RAS
                                 o_ADDR <= "0010"&addr_next(0)(8 downto 0);
@@ -384,62 +387,86 @@ begin
 
                             when to_unsigned(1, cycle'length) => -- 1
                                 if not(delayed_write) then
-                                -- VRAM RAS
-                                    --RAM_CMD <= CMD_BankActivate;
+                                -- GC RAS
+                                    o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                    o_BS   <= "01";
+                                    RAM_CMD <= CMD_BankActivate when port_req_latch(1) = '1';
                                 else
                                 -- NOP
                                 end if;
                             when to_unsigned(2, cycle'length) => -- 2
                                 -- CPU R/W
                                 o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
-                                if (we_latch(0) or oe_latch(0)) then
-                                    if we_latch(0)='1' then
-                                        RAM_CMD <=CMD_Write;
-                                        dq_out  <= din_latch(0);
-                                    else
-                                        RAM_CMD <= CMD_Read;
-                                    end if;
+                                if we_latch(0)='1' then
+                                    dq_out  <= din_latch(0)(15 downto 0);
+                                    RAM_CMD <= CMD_Write when port_req_latch(0) = '1';
+                                else
+                                    RAM_CMD <= CMD_Read when port_req_latch(0) = '1';
                                 end if;
 
                             when to_unsigned(3, cycle'length) => -- 3
                                 if not(delayed_write) then
-                                -- VRAM READ
-                                    --RAM_CMD <= CMD_Read;
+                                    -- CPU data
+                                    dq_out  <= din_latch(0)(31 downto 16) when we_latch(0)='1';
                                 else
-                                    -- Latching VRAM access related signals
-                                    din_latch(1)      <= din_next(1);
-                                    addr_latch(1)     <= addr_next(1);
-                                    ds_latch(1)       <= ds_next(1);
-                                    port_req_latch(1) <= port_req_next(1);
-                                    we_latch(1)       <= we_next(1);
-                                    oe_latch(1)       <= oe_next(1);
-
-                                    -- VRAM RAS
+                                    -- GC RAS
                                     o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     RAM_CMD <= CMD_BankActivate when port_req_next(1);
                                 end if;
                             when to_unsigned(4, cycle'length)  => -- 4
+                                if we_latch(0) = '0' and port_req_latch(0)='1' then
+                                    controller_ports(0).rdata(15 downto 0) <= dq_in;
+                                end if;
+
                                 if not(delayed_write) then
-                                -- CPU <LZ>
+                                    o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
+                                    o_BS   <= "01";
+                                    if port_req_next(1) = '1' then 
+                                        RAM_CMD <= CMD_Write when we_latch(1) = '1' else
+                                                   CMD_Read;
+
+                                        dq_out <=din_latch(1)(31 downto 16) when we_latch(1) = '1';
+                                    end if;
                                 else
                                 -- CPU <LZ>
                                 end if;
                             when to_unsigned(5, cycle'length) => -- 5
-                                if not(delayed_write) then
+                                if we_latch(0) = '0' and port_req_latch(0)='1' then
+                                    controller_ports(0).rdata(31 downto 16) <= dq_in;
+                                end if;
+
                                 -- CPU DATA
-                                else
-                                -- CPU DATA
+                                if port_req_latch(0) = '1' and we_latch(0) = '0' then
                                     cpu_dout_buff(15 downto 0) <= dq_in;
                                 end if;
-                            when to_unsigned(6, cycle'length) => -- 6
+
                                 if not(delayed_write) then
-                                -- VRAM DATA
+                                    -- CPU DATA
+                                    if RAM_CMD = CMD_Write then
+                                        dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
+                                    end if;
+
+                                    -- GC Data
+                                    if port_req_latch(1) = '1' then
+                                        gc_dout_buff(15 downto 0) <= dq_in when we_latch(1) = '0';
+                                    end if;
                                 else
+                                end if;
+
+                            when to_unsigned(6, cycle'length) => -- 6
                                 -- CPU DATA
-                                    -- TODO: spit ack for this port
+                                if port_req_latch(0) = '1' and we_latch(0) = '0' then
                                     ack_latch(0) <= '1';
                                     cpu_dout_buff(31 downto 16) <= dq_in;
+                                end if;
+
+                                if not(delayed_write) then
+                                    -- GC DATA
+                                    if port_req_latch(1) = '1' then
+                                        gc_dout_buff(31 downto 16) <= dq_in when we_latch(1) = '0';
+                                    end if;
+                                else
                                 end if;
                             when to_unsigned(7, cycle'length) => -- 7
                                 if not(delayed_write) then
@@ -471,6 +498,12 @@ begin
                                 -- NOP
                                 end if;
                             when to_unsigned(11, cycle'length) => -- 11
+                                if not(delayed_write) then
+                                    -- NOP
+                                else
+                                    -- NOP
+                                end if;
+                            when to_unsigned(12, cycle'length) => -- 11
                                 if not(delayed_write) then
                                     -- NOP
                                 else

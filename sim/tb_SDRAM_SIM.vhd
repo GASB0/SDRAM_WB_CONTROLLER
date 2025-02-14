@@ -72,6 +72,7 @@ begin
   r_PLL_LOCK <= '1' after 10 us;
   c_100MHZ_45_DEG_CLK <= delayed_clk and r_PLL_LOCK;
   c_100MHZ_CLK        <= i_CONTROLLER_CLK and r_PLL_LOCK;
+  s_WB_GC_DAT_i <= x"FFFFAFAF";
 
     CONTROLLER_INTERFACE : entity work.SDRAM_CONTROLLER
     port map(
@@ -115,6 +116,48 @@ begin
         i_WB_CPU_CYC  => s_WB_CPU_CYC
       );
 
+  memory_chip: entity fmf.mt48lc4m16
+  port map(
+        BA0       => o_SDRAM_BS(0),
+        BA1       => o_SDRAM_BS(1),
+        DQML      => o_SDRAM_DQM(0),
+        DQMH      => o_SDRAM_DQM(1),
+        DQ0       => io_SDRAM_DQ(0),
+        DQ1       => io_SDRAM_DQ(1),
+        DQ2       => io_SDRAM_DQ(2),
+        DQ3       => io_SDRAM_DQ(3),
+        DQ4       => io_SDRAM_DQ(4),
+        DQ5       => io_SDRAM_DQ(5),
+        DQ6       => io_SDRAM_DQ(6),
+        DQ7       => io_SDRAM_DQ(7),
+        DQ8       => io_SDRAM_DQ(8),
+        DQ9       => io_SDRAM_DQ(9),
+        DQ10      => io_SDRAM_DQ(10),
+        DQ11      => io_SDRAM_DQ(11),
+        DQ12      => io_SDRAM_DQ(12),
+        DQ13      => io_SDRAM_DQ(13),
+        DQ14      => io_SDRAM_DQ(14),
+        DQ15      => io_SDRAM_DQ(15),
+        CLK       => c_100MHZ_45_DEG_CLK,
+        CKE       => '1',
+        A0        => o_SDRAM_ADDR(0),
+        A1        => o_SDRAM_ADDR(1),
+        A2        => o_SDRAM_ADDR(2),
+        A3        => o_SDRAM_ADDR(3),
+        A4        => o_SDRAM_ADDR(4),
+        A5        => o_SDRAM_ADDR(5),
+        A6        => o_SDRAM_ADDR(6),
+        A7        => o_SDRAM_ADDR(7),
+        A8        => o_SDRAM_ADDR(8),
+        A9        => o_SDRAM_ADDR(9),
+        A10       => o_SDRAM_ADDR(10),
+        A11       => o_SDRAM_ADDR(11),
+        WENeg     => o_SDRAM_WEn,
+        RASNeg    => o_SDRAM_RASn,
+        CSNeg     => o_SDRAM_CSn,
+        CASNeg    => o_SDRAM_CASn
+  );
+
   -- Now we need some logic for handling wishbone port...
   WB_TEST : process(c_100MHZ_CLK)
       variable v_clk_cnt : INTEGER := 0;
@@ -132,7 +175,7 @@ begin
             when 0 =>
             when 1 =>
                 -- Setting read operation on the CPU port
-                s_WB_CPU_ADDR <= (10 =>'1', others => '0');
+                s_WB_CPU_ADDR <= (others => '1');
                 s_WB_CPU_WE   <= '0';
                 s_WB_CPU_STB  <= '1';
                 s_WB_CPU_CYC  <= '1';
