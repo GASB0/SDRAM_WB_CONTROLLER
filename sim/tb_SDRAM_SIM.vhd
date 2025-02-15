@@ -1,3 +1,5 @@
+-- TODO: Start writing formal verification for these transactions
+
 library ieee;
 library work;
 
@@ -72,7 +74,8 @@ begin
   r_PLL_LOCK <= '1' after 10 us;
   c_100MHZ_45_DEG_CLK <= delayed_clk and r_PLL_LOCK;
   c_100MHZ_CLK        <= i_CONTROLLER_CLK and r_PLL_LOCK;
-  s_WB_GC_DAT_i <= x"FFFFAFAF";
+  s_WB_GC_DAT_i  <= x"FFFFAFAF";
+  s_WB_CPU_DAT_i <= x"CECEBABA";
 
     CONTROLLER_INTERFACE : entity work.SDRAM_CONTROLLER
     port map(
@@ -173,10 +176,10 @@ begin
 
         case v_clk_cnt is
             when 0 =>
-            when 1 =>
+            when 1 => -- Testing the write-write operation
                 -- Setting read operation on the CPU port
                 s_WB_CPU_ADDR <= (others => '1');
-                s_WB_CPU_WE   <= '0';
+                s_WB_CPU_WE   <= '1';
                 s_WB_CPU_STB  <= '1';
                 s_WB_CPU_CYC  <= '1';
                 s_WB_CPU_SEL  <= (others => '1');
