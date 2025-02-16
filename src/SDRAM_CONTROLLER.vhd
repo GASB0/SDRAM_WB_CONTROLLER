@@ -126,6 +126,7 @@ architecture behavior of SDRAM_CONTROLLER is
     signal rst_done, rst_done_q, i_WB_STB_q, i_WB_STB_qq, begin_RW : std_logic := '0';
     signal rst_cnt  : unsigned(31 downto 0) := (others => '0');
     signal dq_out, dq_in : std_logic_vector(io_DQ'length-1 downto 0);
+    signal dq_oen : std_logic := '0';
     signal gc_dout_buff, cpu_dout_buff : std_logic_vector(31 downto 0);
 
     type std_logic_matrix is array (natural range <>) of std_logic_vector;
@@ -233,9 +234,9 @@ begin
     end generate wb_latching;
 
 
---    io_DQ <= (others => 'Z') when we_latch(0) = '0' or we_latch(1) = '0' else
---             dq_out;
-    io_DQ <= dq_out;
+    -- TODO: fix the logic for handling the output line
+    io_DQ <= dq_out when dq_oen ='1' else
+             (others => 'Z');
 
     dq_in <= io_DQ;
 
@@ -354,7 +355,7 @@ begin
 
                         -- Check for delay Delayed write condition
                         RAM_CMD <= CMD_NOP; -- Default RAM command
-                        dq_out <= (others => '0');
+                        dq_oen <= '0';
                         ack_latch <= "00";
 
                         -- TODO: we need to add some condition here to indicate
@@ -397,6 +398,8 @@ begin
                                 end if;
 
                             when to_unsigned(2, cycle'length) => -- 2
+                                dq_oen <= '1' when we_latch(0) = '1' and port_req_latch(0)='1';
+
                                 -- CPU R/W
                                 o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
                                 o_BS <= "00";
@@ -408,6 +411,8 @@ begin
                                 end if;
 
                             when to_unsigned(3, cycle'length) => -- 3
+                                dq_oen <= '1' when we_latch(0) = '1' and port_req_latch(0)='1';
+
                                 if not(delayed_write) then
                                     -- CPU data
                                     if we_latch(0)='1' then
@@ -427,6 +432,8 @@ begin
                                     controller_ports(0).rdata(15 downto 0) <= dq_in;
                                 end if;
 
+                                dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
+
                                 if not(delayed_write) then
                                     -- GC access
                                     o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
@@ -445,6 +452,8 @@ begin
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
                                     controller_ports(0).rdata(31 downto 16) <= dq_in;
                                 end if;
+
+                                dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
 
                                 -- CPU DATA
                                 if port_req_latch(0) = '1' and we_latch(0) = '0' then
@@ -483,6 +492,8 @@ begin
                                 if not(delayed_write) then
                                 -- NOP
                                 else
+                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
+
                                     -- VRAM access
                                     o_ADDR  <= "0010"&addr_latch(1)(8 downto 0);
                                     dq_out  <= din_latch(1)(15 downto 0); -- Writing port 2 data
@@ -492,6 +503,8 @@ begin
                                 if not(delayed_write) then
                                 -- NOP
                                 else
+                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
+
                                     -- TODO: spit ack for this port
                                     ack_latch(1) <= '1';
                                     dq_out <= din_latch(1)(31 downto 16); -- Writing port 2 data
