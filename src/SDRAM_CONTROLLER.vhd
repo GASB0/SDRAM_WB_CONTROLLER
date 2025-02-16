@@ -213,7 +213,7 @@ begin
 
     -- Capturing GC and CPU
     wb_latching: for i in 0 to 1 generate
-        process(controller_ports(i).cyc)
+        process(controller_ports(i).cyc, ack_latch(i))
         begin
             port_req_next(i) <= '0';
             we_next(i)       <= '0';
@@ -460,6 +460,7 @@ begin
                                 -- CPU DATA
                                 if port_req_latch(0) = '1' and we_latch(0) = '0' then
                                     cpu_dout_buff(15 downto 0) <= dq_in;
+                                    ack_latch(0) <= '1';
                                 end if;
 
                                 if not(delayed_write) then
@@ -470,13 +471,13 @@ begin
                                         -- Finishing writing on bank 1
                                         dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
                                         ack_latch(1) <= '1' when we_latch(1) = '1';
-
-                                        --gc_dout_buff(15 downto 0) <= dq_in when we_latch(1) = '0';
                                     end if;
                                 else
                                 end if;
 
                                 cpu_dout_buff(15 downto 0) <= dq_in when port_req_latch(0) = '1' and we_latch(0) = '0';
+                                ack_latch(0) <= '1' when port_req_latch(0) = '1' and we_latch(0) = '0';
+
                                 gc_dout_buff(31 downto 16) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
 
                             when to_unsigned(6, cycle'length) => -- 6
@@ -497,6 +498,7 @@ begin
 
                                 if we_latch = "10" and port_req_latch(0) = '1' then
                                     gc_dout_buff(15 downto 0) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                    ack_latch(1) <= '1' when port_req_latch(1) = '1' and we_latch(1) = '0';
                                 end if;
 
                             when to_unsigned(7, cycle'length) => -- 7
@@ -508,10 +510,12 @@ begin
                                     -- VRAM access
                                     o_ADDR  <= "0010"&addr_latch(1)(8 downto 0);
                                     dq_out  <= din_latch(1)(15 downto 0); -- Writing port 2 data
+
                                     RAM_CMD <= CMD_Write when port_req_latch(1) = '1';
                                 end if;
 
                                 gc_dout_buff(15 downto 0) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                ack_latch(1) <= '1' when port_req_latch(1) = '1' and we_latch(1) = '0';
 
                             when to_unsigned(8, cycle'length) => -- 8
                                 if not(delayed_write) then
