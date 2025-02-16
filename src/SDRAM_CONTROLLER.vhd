@@ -448,6 +448,8 @@ begin
                                     -- CPU <LZ>
                                 end if;
 
+                                cpu_dout_buff(31 downto 16) <= dq_in when port_req_latch(0) = '1' and we_latch(0) = '0';
+
                             when to_unsigned(5, cycle'length) => -- 5
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
                                     controller_ports(0).rdata(31 downto 16) <= dq_in;
@@ -474,11 +476,13 @@ begin
                                 else
                                 end if;
 
+                                cpu_dout_buff(15 downto 0) <= dq_in when port_req_latch(0) = '1' and we_latch(0) = '0';
+                                gc_dout_buff(31 downto 16) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+
                             when to_unsigned(6, cycle'length) => -- 6
                                 -- CPU DATA
                                 if port_req_latch(0) = '1' and we_latch(0) = '0' then
                                     ack_latch(0) <= '1';
-                                    cpu_dout_buff(31 downto 16) <= dq_in;
                                 end if;
 
                                 if not(delayed_write) then
@@ -488,6 +492,13 @@ begin
                                     end if;
                                 else
                                 end if;
+
+                                gc_dout_buff(31 downto 16) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+
+                                if we_latch = "10" and port_req_latch(0) = '1' then
+                                    gc_dout_buff(15 downto 0) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                end if;
+
                             when to_unsigned(7, cycle'length) => -- 7
                                 if not(delayed_write) then
                                 -- NOP
@@ -499,6 +510,9 @@ begin
                                     dq_out  <= din_latch(1)(15 downto 0); -- Writing port 2 data
                                     RAM_CMD <= CMD_Write when port_req_latch(1) = '1';
                                 end if;
+
+                                gc_dout_buff(15 downto 0) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+
                             when to_unsigned(8, cycle'length) => -- 8
                                 if not(delayed_write) then
                                 -- NOP
