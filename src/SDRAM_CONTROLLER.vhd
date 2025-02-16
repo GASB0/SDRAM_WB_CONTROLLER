@@ -354,6 +354,7 @@ begin
 
                         -- Check for delay Delayed write condition
                         RAM_CMD <= CMD_NOP; -- Default RAM command
+                        dq_out <= (others => '0');
                         ack_latch <= "00";
 
                         -- TODO: we need to add some condition here to indicate
@@ -403,7 +404,7 @@ begin
                                     RAM_CMD <= CMD_Write when we_latch(0)='1' else
                                                CMD_Read;
 
-                                    dq_out  <= din_latch(0)(15 downto 0) when we_latch(0)='1';
+                                    dq_out  <= din_latch(0)(31 downto 16) when we_latch(0)='1';
                                 end if;
 
                             when to_unsigned(3, cycle'length) => -- 3
@@ -411,7 +412,7 @@ begin
                                     -- CPU data
                                     if we_latch(0)='1' then
                                         ack_latch(0) <= '1';
-                                        dq_out  <= din_latch(0)(31 downto 16);
+                                        dq_out  <= din_latch(0)(15 downto 0);
                                     end if;
 
                                 else
@@ -430,11 +431,11 @@ begin
                                     -- GC access
                                     o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
-                                    if port_req_next(1) = '1' then 
+                                    if port_req_latch(1) = '1' then 
                                         RAM_CMD <= CMD_Write when we_latch(1) = '1' else
                                                    CMD_Read;
 
-                                        dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
+                                        dq_out <=din_latch(1)(31 downto 16) when we_latch(1) = '1';
                                     end if;
                                 else
                                     -- CPU <LZ>
@@ -452,14 +453,11 @@ begin
 
                                 if not(delayed_write) then
                                     -- CPU DATA
-                                    if RAM_CMD = CMD_Write then
-                                        dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
-                                    end if;
 
                                     -- GC Data
                                     if port_req_latch(1) = '1' then
                                         -- Finishing writing on bank 1
-                                        dq_out <=din_latch(1)(31 downto 16) when we_latch(1) = '1';
+                                        dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
                                         ack_latch(1) <= '1' when we_latch(1) = '1';
 
                                         --gc_dout_buff(15 downto 0) <= dq_in when we_latch(1) = '0';

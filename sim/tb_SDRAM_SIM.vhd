@@ -45,10 +45,16 @@ architecture behavior of tb_SDRAM_SIM is
 
   -- Test data
   signal init_cnt     : unsigned(31 downto 0) := (others => '0');
+  signal r_clk_cnt : INTEGER := 0;
 
   constant CLK_PERIOD : time := 10 ns;
   constant DELAY_TIME : time := CLK_PERIOD/8;
   signal reset, delayed_clk : std_logic := '0';
+
+  -- State machine for different operations for the SDRAM
+  type OPERATION_MODE is (WriteWrite, WriteRead, ReadRead, ReadWrite);
+
+  signal r_operation_mode : OPERATION_MODE;
 
 begin
   
@@ -74,8 +80,8 @@ begin
   r_PLL_LOCK <= '1' after 10 us;
   c_100MHZ_45_DEG_CLK <= delayed_clk and r_PLL_LOCK;
   c_100MHZ_CLK        <= i_CONTROLLER_CLK and r_PLL_LOCK;
-  s_WB_GC_DAT_i  <= x"FFFFAFAF";
-  s_WB_CPU_DAT_i <= x"CECEBABA";
+  s_WB_GC_DAT_i  <= x"AABBCCDD";
+  s_WB_CPU_DAT_i <= x"FAFBFCFD";
 
     CONTROLLER_INTERFACE : entity work.SDRAM_CONTROLLER
     port map(
@@ -163,7 +169,6 @@ begin
 
   -- Now we need some logic for handling wishbone port...
   WB_TEST : process(c_100MHZ_CLK)
-      variable v_clk_cnt : INTEGER := 0;
   begin
     if rising_edge(c_100MHZ_CLK) and r_PLL_LOCK= '1' and s_SDRAM_READY='1' then
         if s_WB_CPU_ACK = '1' then
@@ -174,31 +179,61 @@ begin
             s_WB_GC_CYC   <= '0';
         end if;
 
-        case v_clk_cnt is
-            when 0 =>
-            when 1 => -- Testing the write-write operation
-                -- Setting read operation on the CPU port
-                s_WB_CPU_ADDR <= (others => '1');
-                s_WB_CPU_WE   <= '1';
-                s_WB_CPU_STB  <= '1';
-                s_WB_CPU_CYC  <= '1';
-                s_WB_CPU_SEL  <= (others => '1');
+        case r_operation_mode is
+            when WriteWrite =>
+                r_clk_cnt <= r_clk_cnt + 1 when s_SDRAM_READY='1';
+                case r_clk_cnt is
+                    when 0 =>
+                    when 1 => -- Testing the write-write operation
+                        -- Setting read operation on the CPU port
+                        s_WB_CPU_ADDR <= (4=>'1', others => '0');
+                        s_WB_CPU_WE   <= '1';
+                        s_WB_CPU_STB  <= '1';
+                        s_WB_CPU_CYC  <= '1';
+                        s_WB_CPU_SEL  <= (others => '1');
+                        -- Setting write operation on the GC port
+                        s_WB_GC_ADDR <= (others => '0');
+                        s_WB_GC_WE   <= '1';
+                        s_WB_GC_STB  <= '1';
+                        s_WB_GC_CYC  <= '1';
+                        s_WB_GC_SEL  <= (others => '1');
+                    when 2 =>
+                        s_WB_CPU_STB <= '0';
+                        s_WB_GC_STB  <= '0';
+                    when others =>
+                        if s_WB_GC_CYC = '0' and s_WB_CPU_CYC = '0' then
+                            r_operation_mode <= ReadRead;
+                            r_clk_cnt <= 0;
+                        end if;
+                end case;
 
-                -- Setting write operation on the GC port
-                s_WB_GC_ADDR <= (others => '0');
-                s_WB_GC_WE   <= '1';
-                s_WB_GC_STB  <= '1';
-                s_WB_GC_CYC  <= '1';
-                s_WB_GC_SEL  <= (others => '1');
-            when 2 =>
-                s_WB_CPU_STB <= '0';
-                s_WB_GC_STB  <= '0';
+            when ReadRead =>
+                r_clk_cnt <= r_clk_cnt + 1 when s_SDRAM_READY='1';
+                case r_clk_cnt is
+                    when 0 =>
+                    when 1 => -- Testing the write-write operation
+                        -- Setting read operation on the CPU port
+                        s_WB_CPU_ADDR <= (4=>'1', others => '0');
+                        s_WB_CPU_WE   <= '0';
+                        s_WB_CPU_STB  <= '1';
+                        s_WB_CPU_CYC  <= '1';
+                        s_WB_CPU_SEL  <= (others => '1');
+                        -- Setting write operation on the GC port
+                        s_WB_GC_ADDR <= (others => '0');
+                        s_WB_GC_WE   <= '0';
+                        s_WB_GC_STB  <= '1';
+                        s_WB_GC_CYC  <= '1';
+                        s_WB_GC_SEL  <= (others => '1');
+                    when 2 =>
+                        s_WB_CPU_STB <= '0';
+                        s_WB_GC_STB  <= '0';
+                    when others =>
+                        r_operation_mode <= ReadRead;
+                        r_clk_cnt <= 0;
+                end case;
+
             when others =>
-        end case;
-
-        if s_SDRAM_READY='1' then
-            v_clk_cnt := v_clk_cnt + 1;
-        end if;
+            end case;
 
     end if;
   end process WB_TEST;
