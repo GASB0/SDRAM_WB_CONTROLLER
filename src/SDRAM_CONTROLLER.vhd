@@ -233,8 +233,6 @@ begin
         end process;
     end generate wb_latching;
 
-
-    -- TODO: fix the logic for handling the output line
     io_DQ <= dq_out when dq_oen ='1' else
              (others => 'Z');
 
@@ -358,9 +356,6 @@ begin
                         dq_oen <= '0';
                         ack_latch <= "00";
 
-                        -- TODO: we need to add some condition here to indicate
-                        -- when to start going through this cycle thingy
-
                         -- It could be that you can only get here whenever there's a port request
                         case cycle is
                             when TO_UNSIGNED(0, cycle'length) => -- 0
@@ -432,12 +427,12 @@ begin
                                     controller_ports(0).rdata(15 downto 0) <= dq_in;
                                 end if;
 
-                                dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
-
                                 if not(delayed_write) then
                                     -- GC access
                                     o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
+                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
+
                                     if port_req_latch(1) = '1' then 
                                         RAM_CMD <= CMD_Write when we_latch(1) = '1' else
                                                    CMD_Read;
@@ -455,8 +450,6 @@ begin
                                     controller_ports(0).rdata(31 downto 16) <= dq_in;
                                 end if;
 
-                                dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
-
                                 -- CPU DATA
                                 if port_req_latch(0) = '1' and we_latch(0) = '0' then
                                     cpu_dout_buff(15 downto 0) <= dq_in;
@@ -467,6 +460,7 @@ begin
                                     -- CPU DATA
 
                                     -- GC Data
+                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
                                     if port_req_latch(1) = '1' then
                                         -- Finishing writing on bank 1
                                         dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
@@ -478,6 +472,8 @@ begin
                                 cpu_dout_buff(15 downto 0) <= dq_in when port_req_latch(0) = '1' and we_latch(0) = '0';
                                 ack_latch(0) <= '1' when port_req_latch(0) = '1' and we_latch(0) = '0';
 
+                                -- TODO: Find a way so this register isn't rewriten during the 
+                                -- writing of cpu_dout_buff
                                 gc_dout_buff(31 downto 16) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
 
                             when to_unsigned(6, cycle'length) => -- 6
@@ -523,7 +519,6 @@ begin
                                 else
                                     dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
 
-                                    -- TODO: spit ack for this port
                                     ack_latch(1) <= '1';
                                     dq_out <= din_latch(1)(31 downto 16); -- Writing port 2 data
                                 end if;

@@ -80,8 +80,6 @@ begin
   r_PLL_LOCK <= '1' after 10 us;
   c_100MHZ_45_DEG_CLK <= delayed_clk and r_PLL_LOCK;
   c_100MHZ_CLK        <= i_CONTROLLER_CLK and r_PLL_LOCK;
-  s_WB_GC_DAT_i  <= x"AABBCCDD";
-  s_WB_CPU_DAT_i <= x"FAFBFCFD";
 
     CONTROLLER_INTERFACE : entity work.SDRAM_CONTROLLER
     port map(
@@ -185,6 +183,9 @@ begin
                 case r_clk_cnt is
                     when 0 =>
                     when 1 => -- Testing the write-write operation
+                        s_WB_CPU_DAT_i <= x"FAFBFCFD";
+                        s_WB_GC_DAT_i  <= x"AABBCCDD";
+
                         -- Setting read operation on the CPU port
                         s_WB_CPU_ADDR <= (4=>'1', others => '0');
                         s_WB_CPU_WE   <= '1';
@@ -228,8 +229,70 @@ begin
                         s_WB_CPU_STB <= '0';
                         s_WB_GC_STB  <= '0';
                     when others =>
-                        r_operation_mode <= ReadRead;
-                        r_clk_cnt <= 0;
+                        if s_WB_GC_CYC = '0' and s_WB_CPU_CYC = '0' then
+                            r_operation_mode <= WriteRead;
+                            r_clk_cnt <= 0;
+                        end if;
+                end case;
+
+            when WriteRead =>
+                r_clk_cnt <= r_clk_cnt + 1 when s_SDRAM_READY='1';
+                case r_clk_cnt is
+                    when 0 =>
+                    when 1 => -- Testing the write-write operation
+                        s_WB_CPU_DAT_i <= x"004488CC";
+                        --s_WB_GC_DAT_i  <= x"AABBCCDD";
+
+                        -- Setting read operation on the CPU port
+                        s_WB_CPU_ADDR <= (4=>'1', others => '0');
+                        s_WB_CPU_WE   <= '1';
+                        s_WB_CPU_STB  <= '1';
+                        s_WB_CPU_CYC  <= '1';
+                        s_WB_CPU_SEL  <= (others => '1');
+                        -- Setting write operation on the GC port
+                        s_WB_GC_ADDR <= (others => '0');
+                        s_WB_GC_WE   <= '0';
+                        s_WB_GC_STB  <= '1';
+                        s_WB_GC_CYC  <= '1';
+                        s_WB_GC_SEL  <= (others => '1');
+                    when 2 =>
+                        s_WB_CPU_STB <= '0';
+                        s_WB_GC_STB  <= '0';
+                    when others =>
+                        if s_WB_GC_CYC = '0' and s_WB_CPU_CYC = '0' then
+                            r_operation_mode <= ReadWrite;
+                            r_clk_cnt <= 0;
+                        end if;
+                end case;
+
+            when ReadWrite =>
+                r_clk_cnt <= r_clk_cnt + 1 when s_SDRAM_READY='1';
+                case r_clk_cnt is
+                    when 0 =>
+                    when 1 => -- Testing the write-write operation
+                        --s_WB_CPU_DAT_i <= x"004488CC";
+                        s_WB_GC_DAT_i  <= x"DDEEAAFF";
+
+                        -- Setting read operation on the CPU port
+                        s_WB_CPU_ADDR <= (4=>'1', others => '0');
+                        s_WB_CPU_WE   <= '0';
+                        s_WB_CPU_STB  <= '1';
+                        s_WB_CPU_CYC  <= '1';
+                        s_WB_CPU_SEL  <= (others => '1');
+                        -- Setting write operation on the GC port
+                        s_WB_GC_ADDR <= (others => '0');
+                        s_WB_GC_WE   <= '1';
+                        s_WB_GC_STB  <= '1';
+                        s_WB_GC_CYC  <= '1';
+                        s_WB_GC_SEL  <= (others => '1');
+                    when 2 =>
+                        s_WB_CPU_STB <= '0';
+                        s_WB_GC_STB  <= '0';
+                    when others =>
+                        if s_WB_GC_CYC = '0' and s_WB_CPU_CYC = '0' then
+                            r_operation_mode <= ReadRead;
+                            r_clk_cnt <= 0;
+                        end if;
                 end case;
 
             when others =>
