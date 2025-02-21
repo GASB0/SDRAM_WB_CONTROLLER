@@ -385,7 +385,7 @@ begin
                             when to_unsigned(1, cycle'length) => -- 1
                                 if not(delayed_write) then
                                 -- GC RAS
-                                    o_ADDR <= "010"&addr_latch(0)(8 downto 0);
+                                    o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     RAM_CMD <= CMD_BankActivate when port_req_latch(1) = '1';
                                 else

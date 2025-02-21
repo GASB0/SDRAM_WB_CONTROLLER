@@ -54,7 +54,7 @@ architecture behavior of tb_SDRAM_SIM is
   -- State machine for different operations for the SDRAM
   type OPERATION_MODE is (WriteWrite, WriteRead, ReadRead, ReadWrite);
 
-  signal r_operation_mode : OPERATION_MODE;
+  signal r_operation_mode : OPERATION_MODE := WriteWrite;
 
 begin
   
@@ -271,7 +271,7 @@ begin
                     when 0 =>
                     when 1 => -- Testing the write-write operation
                         --s_WB_CPU_DAT_i <= x"004488CC";
-                        s_WB_GC_DAT_i  <= x"DDEEAAFF";
+                        s_WB_GC_DAT_i  <= x"DDEE00FF";
 
                         -- Setting read operation on the CPU port
                         s_WB_CPU_ADDR <= (4=>'1', others => '0');
