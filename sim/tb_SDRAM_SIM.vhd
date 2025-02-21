@@ -29,7 +29,7 @@ architecture behavior of tb_SDRAM_SIM is
   signal s_WB_CPU_CYC  , s_WB_GC_CYC   : std_ulogic                     := '0';
 
   -- SDRAM Side interface
-  signal o_SDRAM_ADDR : std_logic_vector(12 downto 0);
+  signal o_SDRAM_ADDR : std_logic_vector(11 downto 0);
   signal o_SDRAM_BS   : std_logic_vector(1 downto 0) := "00";
   signal io_SDRAM_DQ  : std_logic_vector(15 downto 0);
   signal o_SDRAM_RASn : std_logic;

@@ -44,7 +44,7 @@ entity SDRAM_CONTROLLER is
       -- Debug pins
         o_SDRAM_READY   : out std_logic;
       -- SDRAM Side interface
-        o_ADDR      : out std_logic_vector(12 downto 0);
+        o_ADDR      : out std_logic_vector(11 downto 0);
         o_BS        : out std_logic_vector(1 downto 0) := "00";
         io_DQ       : inout std_logic_vector(15 downto 0);
         o_RASn      : out std_logic;
@@ -358,7 +358,7 @@ begin
 
                         -- It could be that you can only get here whenever there's a port request
                         case cycle is
-                            when TO_UNSIGNED(0, cycle'length) => -- 0
+                            when to_unsigned(0, cycle'length) => -- 0
                                 -- Check if we need some delayed_write
                                 delayed_write <= '1' when we_next="01" and port_req_next="11" else
                                                  '0';
@@ -374,7 +374,7 @@ begin
                                 end loop;
 
                                 -- CPU RAS
-                                o_ADDR <= "0010"&addr_next(0)(8 downto 0);
+                                o_ADDR <= "010"&addr_next(0)(8 downto 0);  --0000 0000 0000
                                 o_BS   <= "00";
 
                                 -- TODO: add condition here to signal whether
@@ -385,7 +385,7 @@ begin
                             when to_unsigned(1, cycle'length) => -- 1
                                 if not(delayed_write) then
                                 -- GC RAS
-                                    o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                    o_ADDR <= "010"&addr_latch(0)(8 downto 0);
                                     o_BS   <= "01";
                                     RAM_CMD <= CMD_BankActivate when port_req_latch(1) = '1';
                                 else
@@ -396,7 +396,7 @@ begin
                                 dq_oen <= '1' when we_latch(0) = '1' and port_req_latch(0)='1';
 
                                 -- CPU R/W
-                                o_ADDR <= "0010"&addr_latch(0)(8 downto 0);
+                                o_ADDR <= "010"&addr_latch(0)(8 downto 0);
                                 o_BS <= "00";
                                 if port_req_latch(0) = '1' then
                                     RAM_CMD <= CMD_Write when we_latch(0)='1' else
@@ -417,19 +417,19 @@ begin
 
                                 else
                                     -- GC RAS
-                                    o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
+                                    o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     RAM_CMD <= CMD_BankActivate when port_req_next(1);
                                 end if;
 
-                            when to_unsigned(4, cycle'length)  => -- 4
+                            when to_unsigned(4, cycle'length) => -- 4
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
                                     controller_ports(0).rdata(15 downto 0) <= dq_in;
                                 end if;
 
                                 if not(delayed_write) then
                                     -- GC access
-                                    o_ADDR <= "0010"&addr_latch(1)(8 downto 0);
+                                    o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
 
@@ -504,7 +504,7 @@ begin
                                     dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
 
                                     -- VRAM access
-                                    o_ADDR  <= "0010"&addr_latch(1)(8 downto 0);
+                                    o_ADDR  <= "010"&addr_latch(1)(8 downto 0);
                                     dq_out  <= din_latch(1)(15 downto 0); -- Writing port 2 data
 
                                     RAM_CMD <= CMD_Write when port_req_latch(1) = '1';
