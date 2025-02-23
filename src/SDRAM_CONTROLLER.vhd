@@ -1,3 +1,6 @@
+-- TODO: Formally verify me!
+-- TODO: Make me 2002 compatible!
+
 -- fclk  Delayed write   clkref
 --       CPU      VRAM  
 --     ----------------------
@@ -58,7 +61,6 @@ entity SDRAM_CONTROLLER is
 
         -- CPU access (WISHBONE SLAVE interface)
         o_WB_CPU_ACK  : out std_ulogic;
-        i_WB_CPU_CLK  : in  std_ulogic;
         i_WB_CPU_ADDR : in  std_ulogic_vector( 31 downto 0 );
         i_WB_CPU_DAT  : in  std_ulogic_vector( 31 downto 0 );
         o_WB_CPU_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');
@@ -70,7 +72,6 @@ entity SDRAM_CONTROLLER is
 
         -- Graphics controller access
         o_WB_GC_ACK  : out std_ulogic;
-        i_WB_GC_CLK  : in  std_ulogic;
         i_WB_GC_ADDR : in  std_ulogic_vector( 31 downto 0 );
         i_WB_GC_DAT  : in  std_ulogic_vector( 31 downto 0 );
         o_WB_GC_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');

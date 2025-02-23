@@ -100,7 +100,6 @@ begin
 
         -- Graphics controller access
         o_WB_GC_ACK  => s_WB_GC_ACK,
-        i_WB_GC_CLK  => s_WB_GC_CLK,
         i_WB_GC_ADDR => s_WB_GC_ADDR,
         i_WB_GC_DAT  => s_WB_GC_DAT_i,
         o_WB_GC_DAT  => s_WB_GC_DAT_o,
@@ -112,7 +111,6 @@ begin
 
         -- CPU controller access
         o_WB_CPU_ACK  => s_WB_CPU_ACK,
-        i_WB_CPU_CLK  => s_WB_CPU_CLK,
         i_WB_CPU_ADDR => s_WB_CPU_ADDR,
         i_WB_CPU_DAT  => s_WB_CPU_DAT_i,
         o_WB_CPU_DAT  => s_WB_CPU_DAT_o,
