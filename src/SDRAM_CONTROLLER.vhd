@@ -350,7 +350,9 @@ begin
 
                     when s_NORMAL =>
                         -- Updating the refresh_cnt
-                        refresh_cnt <= refresh_cnt + 1 when refresh_cnt<= REFRESH_CYCLES;
+                        if refresh_cnt<= REFRESH_CYCLES then 
+                            refresh_cnt <= refresh_cnt + 1;
+                        end if;
 
                         -- Check for delay Delayed write condition
                         RAM_CMD <= CMD_NOP; -- Default RAM command
@@ -361,8 +363,11 @@ begin
                         case cycle is
                             when to_unsigned(0, cycle'length) => -- 0
                                 -- Check if we need some delayed_write
-                                delayed_write <= '1' when we_next="01" and port_req_next="11" else
-                                                 '0';
+                                if we_next="01" and port_req_next="11" then
+                                    delayed_write <= '1';
+                                else
+                                    delayed_write <= '0';
+                                end if;
 
                                 -- Latching CPU and GC access related signals
                                 for i in 0 to 1 loop
@@ -381,33 +386,45 @@ begin
                                 -- TODO: add condition here to signal whether
                                 -- or not a port request has been made and is going
                                 -- to be processed in the next cycles
-                                RAM_CMD <= CMD_BankActivate when port_req_next(0) = '1';
+                                if port_req_next(0) = '1' then
+                                    RAM_CMD <= CMD_BankActivate;
+                                end if;
 
                             when to_unsigned(1, cycle'length) => -- 1
                                 if not(delayed_write) then
                                 -- GC RAS
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
-                                    RAM_CMD <= CMD_BankActivate when port_req_latch(1) = '1';
+                                    if port_req_latch(1) = '1' then
+                                        RAM_CMD <= CMD_BankActivate;
+                                    end if;
                                 else
                                 -- NOP
                                 end if;
 
                             when to_unsigned(2, cycle'length) => -- 2
-                                dq_oen <= '1' when we_latch(0) = '1' and port_req_latch(0)='1';
+                                if we_latch(0) = '1' and port_req_latch(0)='1' then
+                                    dq_oen <= '1';
+                                end if;
 
                                 -- CPU R/W
                                 o_ADDR <= "010"&addr_latch(0)(8 downto 0);
                                 o_BS <= "00";
                                 if port_req_latch(0) = '1' then
-                                    RAM_CMD <= CMD_Write when we_latch(0)='1' else
-                                               CMD_Read;
-
-                                    dq_out  <= din_latch(0)(31 downto 16) when we_latch(0)='1';
+                                    if  we_latch(0)='1' then
+                                        RAM_CMD <= CMD_Write;
+                                        if we_latch(0)='1' then
+                                            dq_out  <= din_latch(0)(31 downto 16);
+                                        end if;
+                                    else
+                                        RAM_CMD <= CMD_Read;
+                                    end if;
                                 end if;
 
                             when to_unsigned(3, cycle'length) => -- 3
-                                dq_oen <= '1' when we_latch(0) = '1' and port_req_latch(0)='1';
+                                if we_latch(0) = '1' and port_req_latch(0)='1' then
+                                    dq_oen <= '1';
+                                end if;
 
                                 if not(delayed_write) then
                                     -- CPU data
@@ -420,7 +437,9 @@ begin
                                     -- GC RAS
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
-                                    RAM_CMD <= CMD_BankActivate when port_req_next(1);
+                                    if port_req_next(1) = '1' then
+                                        RAM_CMD <= CMD_BankActivate;
+                                    end if;
                                 end if;
 
                             when to_unsigned(4, cycle'length) => -- 4
@@ -432,19 +451,26 @@ begin
                                     -- GC access
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
-                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
+                                    if we_latch(1) = '1' and port_req_latch(1)='1' then
+                                        dq_oen <= '1';
+                                    end if;
 
                                     if port_req_latch(1) = '1' then 
-                                        RAM_CMD <= CMD_Write when we_latch(1) = '1' else
-                                                   CMD_Read;
+                                        if we_latch(1) = '1' then
+                                            RAM_CMD <= CMD_Write; 
+                                            dq_out <=din_latch(1)(31 downto 16);
+                                        else
+                                            RAM_CMD <= CMD_Read;
+                                        end if;
 
-                                        dq_out <=din_latch(1)(31 downto 16) when we_latch(1) = '1';
                                     end if;
                                 else
                                     -- CPU <LZ>
                                 end if;
 
-                                cpu_dout_buff(31 downto 16) <= dq_in when port_req_latch(0) = '1' and we_latch(0) = '0';
+                                if  port_req_latch(0) = '1' and we_latch(0) = '0' then
+                                    cpu_dout_buff(31 downto 16) <= dq_in;
+                                end if;
 
                             when to_unsigned(5, cycle'length) => -- 5
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
@@ -461,21 +487,28 @@ begin
                                     -- CPU DATA
 
                                     -- GC Data
-                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
-                                    if port_req_latch(1) = '1' then
+                                    if  we_latch(1) = '1' and port_req_latch(1)='1' then
+                                        dq_oen <= '1';
+                                    end if;
+
+                                    if port_req_latch(1) = '1' and  we_latch(1) = '1' then
                                         -- Finishing writing on bank 1
-                                        dq_out <=din_latch(1)(15 downto 0) when we_latch(1) = '1';
-                                        ack_latch(1) <= '1' when we_latch(1) = '1';
+                                        dq_out <=din_latch(1)(15 downto 0);
+                                        ack_latch(1) <= '1';
                                     end if;
                                 else
                                 end if;
 
-                                cpu_dout_buff(15 downto 0) <= dq_in when port_req_latch(0) = '1' and we_latch(0) = '0';
-                                ack_latch(0) <= '1' when port_req_latch(0) = '1' and we_latch(0) = '0';
+                                if port_req_latch(0) = '1' and we_latch(0) = '0' then
+                                    cpu_dout_buff(15 downto 0) <= dq_in;
+                                    ack_latch(0) <= '1';
+                                end if;
 
                                 -- TODO: Find a way so this register isn't rewriten during the 
                                 -- writing of cpu_dout_buff
-                                gc_dout_buff(31 downto 16) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                if port_req_latch(1) = '1' and we_latch(1) = '0' then
+                                    gc_dout_buff(31 downto 16) <= dq_in;
+                                end if;
 
                             when to_unsigned(6, cycle'length) => -- 6
                                 -- CPU DATA
@@ -491,34 +524,44 @@ begin
                                 else
                                 end if;
 
-                                gc_dout_buff(31 downto 16) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                if port_req_latch(1) = '1' and we_latch(1) = '0' then
+                                    gc_dout_buff(31 downto 16) <= dq_in;
+                                end if;
 
-                                if we_latch = "10" and port_req_latch(0) = '1' then
-                                    gc_dout_buff(15 downto 0) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
-                                    ack_latch(1) <= '1' when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                if we_latch = "10" and port_req_latch(0) = '1' and port_req_latch(1) = '1' and we_latch(1) = '0' then
+                                    gc_dout_buff(15 downto 0) <= dq_in;
+                                    ack_latch(1) <= '1';
                                 end if;
 
                             when to_unsigned(7, cycle'length) => -- 7
                                 if not(delayed_write) then
                                 -- NOP
                                 else
-                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
-
                                     -- VRAM access
                                     o_ADDR  <= "010"&addr_latch(1)(8 downto 0);
                                     dq_out  <= din_latch(1)(15 downto 0); -- Writing port 2 data
 
-                                    RAM_CMD <= CMD_Write when port_req_latch(1) = '1';
+                                    if port_req_latch(1) = '1' then
+                                        RAM_CMD <= CMD_Write;
+                                        if we_latch(1) = '1' then
+                                            dq_oen <= '1';
+                                        end if;
+                                    end if;
+
                                 end if;
 
-                                gc_dout_buff(15 downto 0) <= dq_in when port_req_latch(1) = '1' and we_latch(1) = '0';
-                                ack_latch(1) <= '1' when port_req_latch(1) = '1' and we_latch(1) = '0';
+                                if port_req_latch(1) = '1' and we_latch(1) = '0' then
+                                    gc_dout_buff(15 downto 0) <= dq_in;
+                                    ack_latch(1) <= '1';
+                                end if;
 
                             when to_unsigned(8, cycle'length) => -- 8
                                 if not(delayed_write) then
                                 -- NOP
                                 else
-                                    dq_oen <= '1' when we_latch(1) = '1' and port_req_latch(1)='1';
+                                    if we_latch(1) = '1' and port_req_latch(1)='1' then
+                                        dq_oen <= '1';
+                                    end if;
 
                                     ack_latch(1) <= '1';
                                     dq_out <= din_latch(1)(31 downto 16); -- Writing port 2 data
@@ -554,9 +597,13 @@ begin
                         -- Cycle counting logic
                         cycle <= cycle + 1;
                         if delayed_write then
-                            cycle <= (others => '0') when cycle = 12;
+                            if cycle = 12 then
+                                cycle <= (others => '0');
+                            end if;
                         else
-                            cycle <= (others => '0') when cycle = 7;
+                            if cycle = 7 then
+                                cycle <= (others => '0');
+                            end if;
                         end if;
 
                     when others =>
