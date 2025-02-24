@@ -1,5 +1,5 @@
 -- TODO: Formally verify me!
--- TODO: Make me 2002 compatible!
+-- TODO: Add the AutoRefresh mechanism
 
 -- fclk  Delayed write   clkref
 --       CPU      VRAM  
@@ -106,9 +106,13 @@ architecture behavior of SDRAM_CONTROLLER is
     type SDRAM_COMMAND is (NOP, SetModeReg, BankActivate, Write, Read, AutoRefresh, PreCharge);
     signal d_RAM_CMD : SDRAM_COMMAND;
 
-    type SDRAM_STATE is (s_INIT_DELAY, s_SETUP, s_NORMAL);
+    type SDRAM_STATE is (s_INIT_DELAY, s_SETUP, s_NORMAL, s_REFRESH);
     type SETUP_STATE is (s_PRECHARGE_ALL, s_AUTO_REFRESH1, s_AUTO_REFRESH2, s_SET_MODE_REG, s_INIT_CONFIG_DONE);
     type RW_STATE    is (WAITING_RW_OPERATION, REFRESHING, EXECUTING_ACTIVATE, EXECUTING_RW, FINISHING_RW);
+    type REFRESH_STATE is (SENDING_CMD, WAITING_tRC, FINISHING);
+
+    signal r_REFRESH_STATE : REFRESH_STATE := SENDING_CMD;
+    signal tRC_cnt : integer := 0;
 
     signal r_RW_STATE : RW_STATE := WAITING_RW_OPERATION;
 
@@ -122,7 +126,7 @@ architecture behavior of SDRAM_CONTROLLER is
 
     -- Helper signals?
     signal need_refresh : std_logic := '0';
-    signal refresh_cnt  : unsigned(9 downto 0) := to_unsigned(501, 10);
+    signal refresh_cnt  : unsigned(9 downto 0) := to_unsigned(0, 10);
     signal busy : std_logic := '0';
     signal rst_done, rst_done_q, i_WB_STB_q, i_WB_STB_qq, begin_RW : std_logic := '0';
     signal rst_cnt  : unsigned(31 downto 0) := (others => '0');
@@ -247,18 +251,6 @@ begin
     o_RASn <= RAM_CMD(2);
     o_CASn <= RAM_CMD(1);
     o_WEn  <= RAM_CMD(0);
-  
-    process(i_CLK)
-    begin   
-        if rising_edge(i_CLK) then
-            -- RAM Row refresh indicator
-            if (refresh_cnt = 0) then
-                need_refresh <= '0';
-            elsif (refresh_cnt >= REFRESH_CYCLES) then
-                need_refresh <= '1';
-            end if;
-        end if;
-    end process;
 
     -- TODO: Add some logic for sending timeout errors
 
@@ -349,10 +341,37 @@ begin
 
                       end case;
 
+                    when s_REFRESH =>
+                        case r_REFRESH_STATE is
+                            when SENDING_CMD =>
+                                -- Seding refresh
+                                RAM_CMD <= CMD_AutoRefresh;
+                                r_REFRESH_STATE <= WAITING_tRC;
+                            when WAITING_tRC =>
+                                -- Waiting a bit
+                                tRC_cnt <= tRC_cnt + 1;
+                                if tRC_cnt >= 10 then
+                                    r_REFRESH_STATE <= FINISHING; 
+                                    tRC_cnt <= 0;
+                                end if;
+                            when FINISHING =>
+                                -- Going back to receiving commands
+                                r_REFRESH_STATE <= SENDING_CMD;
+                                r_SDRAM_STATE <= s_NORMAL;
+                                cycle <= 0;
+                                refresh_cnt <= to_unsigned(0, 10);
+                                need_refresh <= '0';
+                            when others =>
+                        end case;
+
                     when s_NORMAL =>
                         -- Updating the refresh_cnt
-                        if refresh_cnt<= REFRESH_CYCLES then 
+                        if refresh_cnt <= REFRESH_CYCLES then 
                             refresh_cnt <= refresh_cnt + 1;
+                        end if;
+
+                        if (refresh_cnt >= REFRESH_CYCLES) then
+                            need_refresh <= '1';
                         end if;
 
                         -- Check for delay Delayed write condition
@@ -387,9 +406,14 @@ begin
                                 -- TODO: add condition here to signal whether
                                 -- or not a port request has been made and is going
                                 -- to be processed in the next cycles
-                                if port_req_next(0) = '1' then
+                                if port_req_next(0) = '1' and need_refresh='0' then
                                     RAM_CMD <= CMD_BankActivate;
+                                elsif need_refresh='1' then
+                                    r_SDRAM_STATE <= s_REFRESH;
                                 end if;
+
+                                -- It would be a good idea to add the refresh mechanism after
+                                -- latching the data from the ports
 
                             when 1 => -- 1
                                 if not(delayed_write) = '1' then
