@@ -256,7 +256,12 @@ begin
             else 
                 -- defaults
                 o_SDRAM_DQM <= "00";
-                RAM_CMD <= CMD_NOP; 
+                RAM_CMD     <= CMD_NOP; 
+                dq_oen      <= '0';
+                ack_latch   <= "00";
+
+                controller_ports(0).rdata <= (others => '0');
+                controller_ports(1).rdata <= (others => '0');
 
                 case r_SDRAM_STATE is
                     when s_INIT_DELAY =>
@@ -360,14 +365,6 @@ begin
                         if (refresh_cnt >= REFRESH_CYCLES) then
                             need_refresh <= '1';
                         end if;
-
-                        -- Check for delay Delayed write condition
-                        RAM_CMD <= CMD_NOP; -- Default RAM command
-                        dq_oen <= '0';
-                        ack_latch <= "00";
-
-                        controller_ports(0).rdata <= (others => '0');
-                        controller_ports(1).rdata <= (others => '0');
 
                         -- It could be that you can only get here whenever there's a port request
                         case cycle is
