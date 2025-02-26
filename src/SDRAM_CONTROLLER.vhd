@@ -61,9 +61,10 @@ entity SDRAM_CONTROLLER is
 
         -- CPU access (WISHBONE SLAVE interface)
         o_WB_CPU_ACK  : out std_ulogic;
+        o_WB_CPU_ERR  : out std_ulogic := '0';
         i_WB_CPU_ADDR : in  std_ulogic_vector( 31 downto 0 );
         i_WB_CPU_DAT  : in  std_ulogic_vector( 31 downto 0 );
-        o_WB_CPU_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');
+        o_WB_CPU_DAT  : out std_ulogic_vector( 31 downto 0 );
         o_WB_CPU_RTY  : out std_ulogic;
         i_WB_CPU_SEL  : in  std_ulogic_vector( 3 downto 0 );
         i_WB_CPU_STB  : in  std_ulogic;
@@ -72,9 +73,10 @@ entity SDRAM_CONTROLLER is
 
         -- Graphics controller access
         o_WB_GC_ACK  : out std_ulogic;
+        o_WB_GC_ERR  : out std_ulogic := '0';
         i_WB_GC_ADDR : in  std_ulogic_vector( 31 downto 0 );
         i_WB_GC_DAT  : in  std_ulogic_vector( 31 downto 0 );
-        o_WB_GC_DAT  : out std_ulogic_vector( 31 downto 0 ) := (others => '0');
+        o_WB_GC_DAT  : out std_ulogic_vector( 31 downto 0 );
         o_WB_GC_RTY  : out std_ulogic;
         i_WB_GC_SEL  : in  std_ulogic_vector( 3 downto 0 );
         i_WB_GC_STB  : in  std_ulogic;
@@ -90,7 +92,7 @@ architecture behavior of SDRAM_CONTROLLER is
 
     -- Counter threshold constants for each state
     constant PRECHARGE_ALL_CYCLES : integer := 3;
-    constant AUTO_REFRESH_CYCLES  : integer := 4;
+    constant AUTO_REFRESH_CYCLES  : integer := 6;
     constant SET_MODE_REG_CYCLES  : integer := 1;
 
     -- Defining SDRAM commands
@@ -130,7 +132,7 @@ architecture behavior of SDRAM_CONTROLLER is
     signal busy : std_logic := '0';
     signal rst_done, rst_done_q, i_WB_STB_q, i_WB_STB_qq, begin_RW : std_logic := '0';
     signal rst_cnt  : unsigned(31 downto 0) := (others => '0');
-    signal dq_out, dq_in : std_ulogic_vector(io_DQ'length-1 downto 0);
+    signal dq_out, dq_in : std_ulogic_vector(io_DQ'length-1 downto 0) := (others => '0');
     signal dq_oen : std_logic := '0';
     signal gc_dout_buff, cpu_dout_buff : std_ulogic_vector(31 downto 0);
 
@@ -159,16 +161,16 @@ architecture behavior of SDRAM_CONTROLLER is
 
 begin
     -- Wiring the wishbone ports
-    o_WB_CPU_ACK              <= controller_ports(0).ack;
+    o_WB_CPU_ACK              <= ack_latch(0);
     controller_ports(0).addr  <= i_WB_CPU_ADDR; 
-    o_WB_CPU_DAT              <= controller_ports(0).rdata; 
+    o_WB_CPU_DAT              <= controller_ports(0).rdata;
     controller_ports(0).wdata <= i_WB_CPU_DAT;
     controller_ports(0).sel   <= i_WB_CPU_SEL; 
     controller_ports(0).stb   <= i_WB_CPU_STB; 
     controller_ports(0).we    <= i_WB_CPU_WE; 
     controller_ports(0).cyc   <= i_WB_CPU_CYC; 
 
-    o_WB_GC_ACK               <= controller_ports(1).ack;
+    o_WB_GC_ACK               <= ack_latch(1);
     controller_ports(1).addr  <= i_WB_GC_ADDR; 
     o_WB_GC_DAT               <= controller_ports(1).rdata; 
     controller_ports(1).wdata <= i_WB_GC_DAT;
@@ -176,7 +178,6 @@ begin
     controller_ports(1).stb   <= i_WB_GC_STB; 
     controller_ports(1).we    <= i_WB_GC_WE; 
     controller_ports(1).cyc   <= i_WB_GC_CYC; 
-
 
     o_SDRAM_READY <= '1' when r_SDRAM_STATE = s_NORMAL else
                      '0';
@@ -202,20 +203,6 @@ begin
             when others =>
         end case;
     end process;
-
-    -- I think that the ACK signal only lasts for like one clock cycle
-    -- so I could get rid of the i_WB_*_CYC dependence for the latches
-    -- Latch for the CPU ack signal
-    wb_ack_gen: for i in 0 to 1 generate
-        process(controller_ports(i), ack_latch(i))
-        begin
-            if controller_ports(i).cyc='1' and ack_latch(i)='1' then
-                controller_ports(i).ack <= '1';
-            elsif controller_ports(i).stb='0' then
-                controller_ports(i).ack <= '0';
-            end if;
-        end process;
-    end generate wb_ack_gen;
 
     -- Capturing GC and CPU
     wb_latching: for i in 0 to 1 generate
@@ -468,10 +455,6 @@ begin
                                 end if;
 
                             when 4 => -- 4
-                                if we_latch(0) = '0' and port_req_latch(0)='1' then
-                                    controller_ports(0).rdata(15 downto 0) <= dq_in;
-                                end if;
-
                                 if not(delayed_write) = '1' then
                                     -- GC access
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
@@ -493,19 +476,10 @@ begin
                                     -- CPU <LZ>
                                 end if;
 
-                                if  port_req_latch(0) = '1' and we_latch(0) = '0' then
-                                    cpu_dout_buff(31 downto 16) <= dq_in;
-                                end if;
-
                             when 5 => -- 5
-                                if we_latch(0) = '0' and port_req_latch(0)='1' then
-                                    controller_ports(0).rdata(31 downto 16) <= dq_in;
-                                end if;
-
                                 -- CPU DATA
-                                if port_req_latch(0) = '1' and we_latch(0) = '0' then
-                                    cpu_dout_buff(15 downto 0) <= dq_in;
-                                    ack_latch(0) <= '1';
+                                if we_latch(0) = '0' and port_req_latch(0)='1' then
+                                    controller_ports(0).rdata(15 downto 0) <= dq_in;
                                 end if;
 
                                 if not(delayed_write) = '1' then
@@ -524,20 +498,10 @@ begin
                                 else
                                 end if;
 
-                                if port_req_latch(0) = '1' and we_latch(0) = '0' then
-                                    cpu_dout_buff(15 downto 0) <= dq_in;
-                                    ack_latch(0) <= '1';
-                                end if;
-
-                                -- TODO: Find a way so this register isn't rewriten during the 
-                                -- writing of cpu_dout_buff
-                                if port_req_latch(1) = '1' and we_latch(1) = '0' then
-                                    gc_dout_buff(31 downto 16) <= dq_in;
-                                end if;
-
                             when 6 => -- 6
                                 -- CPU DATA
-                                if port_req_latch(0) = '1' and we_latch(0) = '0' then
+                                if we_latch(0) = '0' and port_req_latch(0)='1' then
+                                    controller_ports(0).rdata(31 downto 16) <= dq_in;
                                     ack_latch(0) <= '1';
                                 end if;
 
