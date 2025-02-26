@@ -366,6 +366,9 @@ begin
                         dq_oen <= '0';
                         ack_latch <= "00";
 
+                        controller_ports(0).rdata <= (others => '0');
+                        controller_ports(1).rdata <= (others => '0');
+
                         -- It could be that you can only get here whenever there's a port request
                         case cycle is
                             when 0 => -- 0
@@ -479,7 +482,7 @@ begin
                             when 5 => -- 5
                                 -- CPU DATA
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
-                                    controller_ports(0).rdata(15 downto 0) <= dq_in;
+                                    cpu_dout_buff(15 downto 0) <= dq_in;
                                 end if;
 
                                 if not(delayed_write) = '1' then
@@ -501,6 +504,7 @@ begin
                             when 6 => -- 6
                                 -- CPU DATA
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
+                                    controller_ports(0).rdata(15 downto 0)  <= cpu_dout_buff(15 downto 0);
                                     controller_ports(0).rdata(31 downto 16) <= dq_in;
                                     ack_latch(0) <= '1';
                                 end if;
