@@ -161,7 +161,7 @@ architecture behavior of SDRAM_CONTROLLER is
 
 begin
     -- Wiring the wishbone ports
-    o_WB_CPU_ACK              <= ack_latch(0);
+    o_WB_CPU_ACK              <= controller_ports(0).ack;
     controller_ports(0).addr  <= i_WB_CPU_ADDR; 
     o_WB_CPU_DAT              <= controller_ports(0).rdata;
     controller_ports(0).wdata <= i_WB_CPU_DAT;
@@ -169,8 +169,9 @@ begin
     controller_ports(0).stb   <= i_WB_CPU_STB; 
     controller_ports(0).we    <= i_WB_CPU_WE; 
     controller_ports(0).cyc   <= i_WB_CPU_CYC; 
+    o_WB_CPU_ERR              <= controller_ports(0).err;
 
-    o_WB_GC_ACK               <= ack_latch(1);
+    o_WB_GC_ACK               <= controller_ports(1).ack;
     controller_ports(1).addr  <= i_WB_GC_ADDR; 
     o_WB_GC_DAT               <= controller_ports(1).rdata; 
     controller_ports(1).wdata <= i_WB_GC_DAT;
@@ -178,6 +179,10 @@ begin
     controller_ports(1).stb   <= i_WB_GC_STB; 
     controller_ports(1).we    <= i_WB_GC_WE; 
     controller_ports(1).cyc   <= i_WB_GC_CYC; 
+    o_WB_GC_ERR               <= controller_ports(1).err;
+
+    controller_ports(0).ack <= ack_latch(0);
+    controller_ports(1).ack <= ack_latch(1);
 
     o_SDRAM_READY <= '1' when r_SDRAM_STATE = s_NORMAL else
                      '0';
@@ -257,8 +262,11 @@ begin
                 dq_oen      <= '0';
                 ack_latch   <= "00";
 
+                -- TODO: Why doesn't looping work here?
                 controller_ports(0).rdata <= (others => '0');
                 controller_ports(1).rdata <= (others => '0');
+                controller_ports(0).err <= '0';
+                controller_ports(1).err <= '0';
 
                 case r_SDRAM_STATE is
                     when s_INIT_DELAY =>
@@ -450,6 +458,11 @@ begin
                                 end if;
 
                             when 4 => -- 4
+                                -- CPU DATA
+                                if we_latch(0) = '0' and port_req_latch(0)='1' then
+                                    cpu_dout_buff <= dq_in;
+                                end if;
+
                                 if not(delayed_write) = '1' then
                                     -- GC access
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
@@ -474,7 +487,9 @@ begin
                             when 5 => -- 5
                                 -- CPU DATA
                                 if we_latch(0) = '0' and port_req_latch(0)='1' then
-                                    cpu_dout_buff <= dq_in;
+                                    controller_ports(0).rdata(15 downto 0)  <= dq_in;
+                                    controller_ports(0).rdata(31 downto 16) <= cpu_dout_buff;
+                                    ack_latch(0) <= '1';
                                 end if;
 
                                 if not(delayed_write) = '1' then
@@ -494,13 +509,6 @@ begin
                                 end if;
 
                             when 6 => -- 6
-                                -- CPU DATA
-                                if we_latch(0) = '0' and port_req_latch(0)='1' then
-                                    controller_ports(0).rdata(15 downto 0)  <= dq_in;
-                                    controller_ports(0).rdata(31 downto 16) <= cpu_dout_buff;
-                                    ack_latch(0) <= '1';
-                                end if;
-
                                 if not(delayed_write) = '1' then
                                     -- GC DATA
                                     if port_req_latch(1) = '1' then
@@ -587,7 +595,7 @@ begin
                                 cycle <= 0;
                             end if;
                         else
-                            if cycle = 7 then
+                            if cycle = 8 then
                                 cycle <= 0;
                             end if;
                         end if;
