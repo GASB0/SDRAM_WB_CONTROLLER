@@ -1,5 +1,5 @@
 -- TODO: Formally verify me!
--- TODO: Add the AutoRefresh mechanism
+-- TODO: Fix the gc port!
 
 -- fclk  Delayed write   clkref
 --       CPU      VRAM  
@@ -88,7 +88,7 @@ end SDRAM_CONTROLLER;
 
 architecture behavior of SDRAM_CONTROLLER is 
     constant REFRESH_CYCLES : unsigned(9 downto 0) := to_unsigned(500, 10);
-    constant FREQ : integer := 96_000_000;
+    constant FREQ : integer := 86_000_000;
 
     -- Counter threshold constants for each state
     constant PRECHARGE_ALL_CYCLES : integer := 3;
@@ -206,7 +206,7 @@ begin
 
     -- Capturing GC and CPU
     wb_latching: for i in 0 to 1 generate
-        process(controller_ports(i).cyc, ack_latch(i))
+        process(controller_ports(i).cyc, ack_latch(i)) -- maybe add stb here?
         begin
             port_req_next(i) <= '0';
             we_next(i)       <= '0';
@@ -238,9 +238,6 @@ begin
     o_RASn <= RAM_CMD(2);
     o_CASn <= RAM_CMD(1);
     o_WEn  <= RAM_CMD(0);
-
-    -- TODO: Add some logic for sending timeout errors
-
 
     -- SDRAM state machine
     STATE_MACHINE: process(i_CLK)
@@ -390,9 +387,6 @@ begin
                                 o_ADDR <= "010"&addr_next(0)(8 downto 0);  --0000 0000 0000
                                 o_BS   <= "00";
 
-                                -- TODO: add condition here to signal whether
-                                -- or not a port request has been made and is going
-                                -- to be processed in the next cycles
                                 if port_req_next(0) = '1' and need_refresh='0' then
                                     RAM_CMD <= CMD_BankActivate;
                                 elsif need_refresh='1' then
@@ -445,6 +439,7 @@ begin
                                         dq_out  <= din_latch(0)(15 downto 0);
                                     end if;
 
+                                    -- Send GC activate command here or something...
                                 else
                                     -- GC RAS
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
@@ -541,7 +536,8 @@ begin
                                 end if;
 
                                 if port_req_latch(1) = '1' and we_latch(1) = '0' then
-                                    gc_dout_buff <= dq_in;
+                                    controller_ports(1).rdata(15 downto 0)  <= dq_in;
+                                    controller_ports(1).rdata(31 downto 16) <= gc_dout_buff;
                                     ack_latch(1) <= '1';
                                 end if;
 
