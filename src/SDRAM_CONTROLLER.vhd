@@ -161,25 +161,27 @@ architecture behavior of SDRAM_CONTROLLER is
 
 begin
     -- Wiring the wishbone ports
-    o_WB_CPU_ACK              <= controller_ports(0).ack;
-    controller_ports(0).addr  <= i_WB_CPU_ADDR; 
-    o_WB_CPU_DAT              <= controller_ports(0).rdata;
-    controller_ports(0).wdata <= i_WB_CPU_DAT;
-    controller_ports(0).sel   <= i_WB_CPU_SEL; 
-    controller_ports(0).stb   <= i_WB_CPU_STB; 
-    controller_ports(0).we    <= i_WB_CPU_WE; 
-    controller_ports(0).cyc   <= i_WB_CPU_CYC; 
-    o_WB_CPU_ERR              <= controller_ports(0).err;
+    o_WB_CPU_ACK              <= controller_ports(1).ack;
+    controller_ports(1).addr  <= i_WB_CPU_ADDR; 
+    o_WB_CPU_DAT              <= controller_ports(1).rdata;
+    controller_ports(1).wdata <= i_WB_CPU_DAT;
+    controller_ports(1).sel   <= i_WB_CPU_SEL; 
+    controller_ports(1).stb   <= i_WB_CPU_STB; 
+    controller_ports(1).we    <= i_WB_CPU_WE; 
+    controller_ports(1).cyc   <= i_WB_CPU_CYC; 
+    o_WB_CPU_ERR              <= controller_ports(1).err;
 
-    o_WB_GC_ACK               <= controller_ports(1).ack;
-    controller_ports(1).addr  <= i_WB_GC_ADDR; 
-    o_WB_GC_DAT               <= controller_ports(1).rdata; 
-    controller_ports(1).wdata <= i_WB_GC_DAT;
-    controller_ports(1).sel   <= i_WB_GC_SEL; 
-    controller_ports(1).stb   <= i_WB_GC_STB; 
-    controller_ports(1).we    <= i_WB_GC_WE; 
-    controller_ports(1).cyc   <= i_WB_GC_CYC; 
-    o_WB_GC_ERR               <= controller_ports(1).err;
+    o_WB_GC_ACK               <= controller_ports(0).ack;
+    controller_ports(0).addr  <= i_WB_GC_ADDR; 
+    o_WB_GC_DAT               <= controller_ports(0).rdata; 
+    controller_ports(0).wdata <= i_WB_GC_DAT;
+    controller_ports(0).sel   <= i_WB_GC_SEL; 
+    controller_ports(0).stb   <= i_WB_GC_STB; 
+    controller_ports(0).we    <= i_WB_GC_WE; 
+    controller_ports(0).cyc   <= i_WB_GC_CYC; 
+    o_WB_GC_ERR               <= controller_ports(0).err;
+
+
 
     controller_ports(0).ack <= ack_latch(0);
     controller_ports(1).ack <= ack_latch(1);
@@ -595,7 +597,10 @@ begin
                                 cycle <= 0;
                             end if;
                         else
-                            if cycle = 8 then
+                             -- This 10 ensures that the cpu is able to be able
+                             -- to read/write data from SDRAM each 'processing'
+                             -- cycle
+                            if cycle = 10 then
                                 cycle <= 0;
                             end if;
                         end if;
