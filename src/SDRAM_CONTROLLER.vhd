@@ -1,6 +1,4 @@
 -- TODO: Formally verify me!
--- TODO: Fix the gc port!
-
 -- fclk  Delayed write   clkref
 --       CPU      VRAM  
 --     ----------------------
@@ -141,7 +139,7 @@ architecture behavior of SDRAM_CONTROLLER is
     signal oe_next       : std_ulogic_vector(0 to 1);
     signal ack_next      : std_ulogic_vector(0 to 1) := (others => '0');
 
-    type ds_buf_t   is array (0 to 1) of std_ulogic_vector(03 downto 0);
+    type ds_buf_t   is array (0 to 1) of std_ulogic_vector(3 downto 0);
     type addr_buf_t is array (0 to 1) of std_ulogic_vector(i_WB_CPU_ADDR'length-1 downto 0);
     type din_buf_t  is array (0 to 1) of std_ulogic_vector(i_WB_CPU_DAT'length-1 downto 0);
 
@@ -162,17 +160,17 @@ architecture behavior of SDRAM_CONTROLLER is
 begin
     -- Wiring the wishbone ports
     o_WB_CPU_ACK              <= controller_ports(1).ack;
-    controller_ports(1).addr  <= i_WB_CPU_ADDR; 
+    controller_ports(1).addr  <= "0"&i_WB_CPU_ADDR(31 downto 1); 
     o_WB_CPU_DAT              <= controller_ports(1).rdata;
     controller_ports(1).wdata <= i_WB_CPU_DAT;
     controller_ports(1).sel   <= i_WB_CPU_SEL; 
-    controller_ports(1).stb   <= i_WB_CPU_STB; 
+    controller_ports(1).stb   <= i_WB_CPU_STB;
     controller_ports(1).we    <= i_WB_CPU_WE; 
     controller_ports(1).cyc   <= i_WB_CPU_CYC; 
     o_WB_CPU_ERR              <= controller_ports(1).err;
 
     o_WB_GC_ACK               <= controller_ports(0).ack;
-    controller_ports(0).addr  <= i_WB_GC_ADDR; 
+    controller_ports(0).addr  <= "0"&i_WB_GC_ADDR(31 downto 1); 
     o_WB_GC_DAT               <= controller_ports(0).rdata; 
     controller_ports(0).wdata <= i_WB_GC_DAT;
     controller_ports(0).sel   <= i_WB_GC_SEL; 
@@ -181,7 +179,10 @@ begin
     controller_ports(0).cyc   <= i_WB_GC_CYC; 
     o_WB_GC_ERR               <= controller_ports(0).err;
 
-
+    -- NOTE: The 1 bit shift between the address coming from the
+    -- wb bus and the address fed to the SDRAM is because the processor
+    -- counts in multiples of 4 (4*8=32 bits) and the SDRAM has stores
+    -- 16 bit words
 
     controller_ports(0).ack <= ack_latch(0);
     controller_ports(1).ack <= ack_latch(1);
