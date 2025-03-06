@@ -1,13 +1,13 @@
 -- TODO: Formally verify me!
 -- fclk  Delayed write   clkref
---       CPU      VRAM  
+--       CPU      VRAM
 --     ----------------------
 -- 0     RAS      <DI>      0
--- 1                        0       
--- 2     READ     PRE       1   
+-- 1                        0
+-- 2     READ     PRE       1
 -- 3                        1
 -- 4     <DO>[AP]           1
--- 5     <DO>     RAS       1  
+-- 5     <DO>     RAS       1
 -- 6                        0
 -- 7              WRITE<DI> 0
 
@@ -67,7 +67,7 @@ entity SDRAM_CONTROLLER is
         i_WB_CPU_SEL  : in  std_ulogic_vector( 3 downto 0 );
         i_WB_CPU_STB  : in  std_ulogic;
         i_WB_CPU_WE   : in  std_ulogic;
-        i_WB_CPU_CYC  : in  std_ulogic; 
+        i_WB_CPU_CYC  : in  std_ulogic;
 
         -- Graphics controller access
         o_WB_GC_ACK  : out std_ulogic;
@@ -84,7 +84,7 @@ entity SDRAM_CONTROLLER is
 
 end SDRAM_CONTROLLER;
 
-architecture behavior of SDRAM_CONTROLLER is 
+architecture behavior of SDRAM_CONTROLLER is
     constant REFRESH_CYCLES : unsigned(9 downto 0) := to_unsigned(500, 10);
     constant FREQ : integer := 86_000_000;
 
@@ -159,24 +159,24 @@ architecture behavior of SDRAM_CONTROLLER is
 
 begin
     -- Wiring the wishbone ports
-    o_WB_CPU_ACK              <= controller_ports(1).ack;
-    controller_ports(1).addr  <= "0"&i_WB_CPU_ADDR(31 downto 1); 
-    o_WB_CPU_DAT              <= controller_ports(1).rdata;
-    controller_ports(1).wdata <= i_WB_CPU_DAT;
-    controller_ports(1).sel   <= i_WB_CPU_SEL; 
-    controller_ports(1).stb   <= i_WB_CPU_STB;
-    controller_ports(1).we    <= i_WB_CPU_WE; 
-    controller_ports(1).cyc   <= i_WB_CPU_CYC; 
-    o_WB_CPU_ERR              <= controller_ports(1).err;
+    o_WB_CPU_ACK              <= controller_ports(0).ack;
+    controller_ports(0).addr  <= "0"&i_WB_CPU_ADDR(31 downto 1);
+    o_WB_CPU_DAT              <= controller_ports(0).rdata;
+    controller_ports(0).wdata <= i_WB_CPU_DAT;
+    controller_ports(0).sel   <= i_WB_CPU_SEL;
+    controller_ports(0).stb   <= i_WB_CPU_STB;
+    controller_ports(0).we    <= i_WB_CPU_WE;
+    controller_ports(0).cyc   <= i_WB_CPU_CYC;
+    o_WB_CPU_ERR              <= controller_ports(0).err;
 
-    o_WB_GC_ACK               <= controller_ports(0).ack;
-    controller_ports(0).addr  <= "0"&i_WB_GC_ADDR(31 downto 1); 
-    o_WB_GC_DAT               <= controller_ports(0).rdata; 
-    controller_ports(0).wdata <= i_WB_GC_DAT;
-    controller_ports(0).sel   <= i_WB_GC_SEL; 
-    controller_ports(0).stb   <= i_WB_GC_STB; 
-    controller_ports(0).we    <= i_WB_GC_WE; 
-    controller_ports(0).cyc   <= i_WB_GC_CYC; 
+    o_WB_GC_ACK               <= controller_ports(1).ack;
+    controller_ports(1).addr  <= "0"&i_WB_GC_ADDR(31 downto 1);
+    o_WB_GC_DAT               <= controller_ports(1).rdata;
+    controller_ports(1).wdata <= i_WB_GC_DAT;
+    controller_ports(1).sel   <= i_WB_GC_SEL;
+    controller_ports(1).stb   <= i_WB_GC_STB;
+    controller_ports(1).we    <= i_WB_GC_WE;
+    controller_ports(1).cyc   <= i_WB_GC_CYC;
     o_WB_GC_ERR               <= controller_ports(0).err;
 
     -- NOTE: The 1 bit shift between the address coming from the
@@ -218,7 +218,7 @@ begin
         begin
             port_req_next(i) <= '0';
             we_next(i)       <= '0';
-            ds_next(i)       <= (others => '0'); 
+            ds_next(i)       <= (others => '0');
             din_next(i)      <= (others => '0');
             addr_next(i)     <= (others => '0');
 
@@ -226,7 +226,7 @@ begin
             -- Set request flag
                 port_req_next(i) <= '1';
                 we_next(i)       <= controller_ports(i).we;
-                ds_next(i)       <= controller_ports(i).sel; 
+                ds_next(i)       <= controller_ports(i).sel;
                 din_next(i)      <= controller_ports(i).wdata;
                 addr_next(i)     <= controller_ports(i).addr;
                 oe_next(i) <= not(we_next(i));
@@ -258,10 +258,10 @@ begin
                 busy          <= '1';
                 o_SDRAM_DQM   <= "10";
                 r_SDRAM_STATE <= s_INIT_DELAY;
-            else 
+            else
                 -- defaults
                 o_SDRAM_DQM <= "00";
-                RAM_CMD     <= CMD_NOP; 
+                RAM_CMD     <= CMD_NOP;
                 dq_oen      <= '0';
                 ack_latch   <= "00";
 
@@ -297,7 +297,7 @@ begin
                           else
                             v_CLK_CNT := v_CLK_CNT + 1;
                           end if;
-                          
+
                         when s_AUTO_REFRESH1 =>
                           if v_CLK_CNT = AUTO_REFRESH_CYCLES then
                             r_SETUP_STATE <= s_AUTO_REFRESH2;
@@ -326,7 +326,7 @@ begin
 
                         when s_SET_MODE_REG =>
                           if v_CLK_CNT = SET_MODE_REG_CYCLES then
-                            r_SETUP_STATE <= s_INIT_CONFIG_DONE; 
+                            r_SETUP_STATE <= s_INIT_CONFIG_DONE;
                             v_CLK_CNT := (others => '0');
                           else
                             v_CLK_CNT := v_CLK_CNT + 1;
@@ -351,7 +351,7 @@ begin
                                 -- Waiting a bit
                                 tRC_cnt <= tRC_cnt + 1;
                                 if tRC_cnt >= 10 then
-                                    r_REFRESH_STATE <= FINISHING; 
+                                    r_REFRESH_STATE <= FINISHING;
                                     tRC_cnt <= 0;
                                 end if;
                             when FINISHING =>
@@ -366,7 +366,7 @@ begin
 
                     when s_NORMAL =>
                         -- Updating the refresh_cnt
-                        if refresh_cnt <= REFRESH_CYCLES then 
+                        if refresh_cnt <= REFRESH_CYCLES then
                             refresh_cnt <= refresh_cnt + 1;
                         end if;
 
@@ -474,9 +474,9 @@ begin
                                         dq_oen <= '1';
                                     end if;
 
-                                    if port_req_latch(1) = '1' then 
+                                    if port_req_latch(1) = '1' then
                                         if we_latch(1) = '1' then
-                                            RAM_CMD <= CMD_Write; 
+                                            RAM_CMD <= CMD_Write;
                                             dq_out <=din_latch(1)(31 downto 16);
                                         else
                                             RAM_CMD <= CMD_Read;
@@ -611,7 +611,7 @@ begin
             end if;
         end if;
     end process STATE_MACHINE;
-      
+
     --
     -- Generate cfg_now pulse after initialization delay (normally 200us)
     --
