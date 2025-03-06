@@ -4,7 +4,6 @@ library work;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 use IEEE.MATH_REAL.ALL;
-use work.my_types_pkg.all;
 
 entity DISP_CONTROLLER is 
     port(
@@ -65,17 +64,10 @@ begin
     -- Latching inputs from the CPU side?
     process(i_WB_CPU_CYC, i_WB_CPU_STB)
     begin
-            start_rw_op    <= '0';
-            we_latch       <= '0';
-            ds_latch       <= (others => '0'); 
-            din_latch      <= (others => '0');
-            addr_latch     <= (others => '0');
+        start_rw_op    <= '0';
+
         if i_WB_CPU_CYC='1' and i_WB_CPU_STB='1' then
             start_rw_op    <= '1';
-            we_latch       <= i_WB_CPU_WE;
-            ds_latch       <= (others => '0'); 
-            din_latch      <= (others => '0');
-            addr_latch     <= (others => '0');
         end if;
     end process;
 
@@ -86,8 +78,12 @@ begin
         -- Loop to be constantly sipping data from the SDRAM controller
             case r_WB_TRANSMISION is
                 when IDLE =>
-                    if start_rw_op then
+                    if start_rw_op='1' then
                         r_WB_TRANSMISION <= RW_DATA;
+                        we_latch         <= i_WB_CPU_WE; -- I think this is going to fail
+                        ds_latch         <= i_WB_CPU_SEL; 
+                        din_latch        <= i_WB_CPU_DAT;
+                        addr_latch       <= i_WB_CPU_ADDR;
                     end if;
                 when RW_DATA =>
                     if we_latch = '0' then
@@ -105,7 +101,7 @@ begin
                 when WAITING_ACK =>
                     o_WB_SDRAM_STB  <= '0';
                     if SDRAM_ACK_RECEIVED = '1' then
-                        if o_WB_SDRAM_WE = '1' then
+                        if we_latch = '1' then
                             -- I think I don't have to do anything here?
                         else
                             BRAM_WRITE_BUFFER <= i_WB_SDRAM_DAT;
