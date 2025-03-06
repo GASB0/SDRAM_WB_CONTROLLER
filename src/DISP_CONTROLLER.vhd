@@ -90,12 +90,12 @@ begin
                         o_WB_SDRAM_WE   <= '0';
                     else
                         o_WB_SDRAM_WE   <= '1';
-                        o_WB_SDRAM_DAT  <= (others => '0'); -- feeding new data to be written
+                        o_WB_SDRAM_DAT  <= din_latch; -- feeding new data to be written
                     end if;
 
-                    o_WB_SDRAM_ADDR  <= (4=>'1', others => '0'); -- this has to be taken from some sort of counter
                     o_WB_SDRAM_CYC   <= '1';
-                    o_WB_SDRAM_SEL   <= (others => '1');
+                    o_WB_SDRAM_ADDR  <= addr_latch;
+                    o_WB_SDRAM_SEL   <= ds_latch;
                     r_WB_TRANSMISION <= WAITING_ACK;
 
                 when WAITING_ACK =>
