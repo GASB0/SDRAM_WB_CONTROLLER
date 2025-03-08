@@ -85,6 +85,20 @@ begin
         end if;
     end process;
 
+
+    -- Logic for receiving data from the SDRAM
+    process(i_WB_SDRAM_ACK)
+    begin
+        if rising_edge(i_WB_SDRAM_ACK) then
+            if we_latch = '1' then
+                -- I think I don't have to do anything here?
+            else
+                o_WB_CPU_DAT <= i_WB_SDRAM_DAT;
+            end if;
+        end if;
+    end process;
+
+
     -- Wishbone tramission logic for the SDRAM side
     process(i_clk)
     begin
@@ -117,12 +131,6 @@ begin
 
                 when WAITING_ACK =>
                     if SDRAM_ACK_RECEIVED = '1' then
-                        if we_latch = '1' then
-                            -- I think I don't have to do anything here?
-                        else
-                            BRAM_WRITE_BUFFER <= i_WB_SDRAM_DAT;
-                        end if;
-
                         -- Resetting signals to default idle state
                         o_WB_CPU_ACK     <= '1';
                         o_WB_SDRAM_WE    <= '0';
