@@ -40,13 +40,13 @@ architecture behavior of DISP_CONTROLLER is
     constant sdram_dc_size_c       : natural := 8*1024; -- wishbone memory size in bytes, should be smaller than an iCACHE block
 
     type CONTROLLER_STATE is     (VRAM_WRITE, VRAM_READ);
-    type WB_TRANSMISION_STATE is (WAITING_ACK, IDLE, RW_DATA, SENDING_DATA);
+    type WB_TRANSMISION_STATE is (WAITING_ACK, IDLE, RW_DATA, SENDING_DATA , FINISH_TRASACTION);
 
     signal r_WB_TRANSMISION : WB_TRANSMISION_STATE := IDLE;
     signal SDRAM_ACK_RECEIVED, qi_WB_SDRAM_ACK : std_ulogic;
     signal qi_WB_CPU_CYC : std_ulogic;
     signal BRAM_WRITE_BUFFER : std_ulogic_vector(31 downto 0);
-    signal start_rw_op, we_latch, port_req_latch : std_ulogic := '0';
+    signal cpu_rw_op_req, cpu_rw_op_req_next, we_latch, port_req_latch : std_ulogic := '0';
     signal addr_latch, din_latch    : std_ulogic_vector(31 downto 0) := (others => '0');
     signal ds_latch : std_ulogic_vector(3 downto 0)  := (others => '0'); 
 
@@ -73,20 +73,7 @@ begin
     valid_ram_address <= '1' when unsigned(i_WB_CPU_ADDR) >= unsigned(i_WB_CPU_ADDR) and unsigned(i_WB_CPU_ADDR) < unsigned(base_addresses)+sdram_dc_size_c
                              else '0';
 
-    -- Latching inputs from the CPU side?
-    process(i_WB_CPU_CYC, i_WB_CPU_STB)
-    begin
-        start_rw_op    <= '0';
-
-        if valid_ram_address = '1' and
-        i_WB_CPU_CYC='1' and i_WB_CPU_STB='1' 
-        then
-            start_rw_op    <= '1';
-        end if;
-    end process;
-
-
-    -- Logic for receiving data from the SDRAM
+    -- Logic for receiving data from the SDRAM (CPU side)
     process(i_WB_SDRAM_ACK)
     begin
         if rising_edge(i_WB_SDRAM_ACK) then
@@ -98,32 +85,53 @@ begin
         end if;
     end process;
 
-
-    -- Wishbone tramission logic for the SDRAM side
+    -- Wishbone CPU-SDRAM access logic
     process(i_clk)
+        variable dummy_cnt : unsigned(addr_latch'length-1 downto 0) := (others => '0');
     begin
         if rising_edge(i_clk) then
+         -- Latch incoming data whenever the CPU is sending something
+            if valid_ram_address = '1' and
+                i_WB_CPU_CYC='1' and i_WB_CPU_STB='1' 
+            then
+                cpu_rw_op_req_next <= '1';
+                we_latch           <= i_WB_CPU_WE;
+                ds_latch           <= i_WB_CPU_SEL; 
+                din_latch          <= i_WB_CPU_DAT;
+                addr_latch         <= i_WB_CPU_ADDR;
+            end if;
+
         -- Loop to be constantly sipping data from the SDRAM controller
             o_WB_SDRAM_STB  <= '0';
             o_WB_CPU_ACK    <= '0';
+
             case r_WB_TRANSMISION is
                 when IDLE =>
-                    if start_rw_op='1' then
-                        r_WB_TRANSMISION <= RW_DATA;
-                        we_latch         <= i_WB_CPU_WE;
-                        ds_latch         <= i_WB_CPU_SEL; 
-                        din_latch        <= i_WB_CPU_DAT;
-                        addr_latch       <= i_WB_CPU_ADDR;
+                    if dummy_cnt >= x"10" then
+                        dummy_cnt := (others => '0');
+                    else
+                        dummy_cnt := dummy_cnt + 1;
                     end if;
+
+                    if cpu_rw_op_req = '0' then
+                        we_latch   <= '0';
+                        ds_latch   <= (others => '0');
+                        addr_latch <= (others => '0');
+                    end if;
+
+                    r_WB_TRANSMISION <= RW_DATA;
+
                 when RW_DATA =>
-                    o_WB_SDRAM_STB  <= '1';
                     if we_latch = '0' then
                         o_WB_SDRAM_WE   <= '0';
                     else
                         o_WB_SDRAM_WE   <= '1';
-                        o_WB_SDRAM_DAT  <= din_latch; -- feeding new data to be written
+                        if cpu_rw_op_req = '1' then
+                            o_WB_SDRAM_DAT  <= din_latch; -- feeding new data to be written
+                        end if;
                     end if;
 
+                    o_WB_SDRAM_STB   <= '1';
                     o_WB_SDRAM_CYC   <= '1';
                     o_WB_SDRAM_ADDR  <= addr_latch;
                     o_WB_SDRAM_SEL   <= ds_latch;
@@ -131,19 +139,25 @@ begin
 
                 when WAITING_ACK =>
                     if SDRAM_ACK_RECEIVED = '1' then
-                        -- Resetting signals to default idle state
+                        -- Logic if the request came from the CPU
                         o_WB_CPU_ACK     <= '1';
-                        o_WB_SDRAM_WE    <= '0';
-                        o_WB_SDRAM_CYC   <= '0';
-                        r_WB_TRANSMISION <= IDLE;
+                        r_WB_TRANSMISION <= FINISH_TRASACTION;
                     end if;
+
+                when FINISH_TRASACTION =>
+                    -- Logic if the request came internally
+                    o_WB_SDRAM_WE       <= '0';
+                    o_WB_SDRAM_CYC      <= '0';
+                    cpu_rw_op_req       <= cpu_rw_op_req_next;
+                    cpu_rw_op_req_next  <= '0';
+                    r_WB_TRANSMISION    <= IDLE;
 
                 when others =>
             end case;
         end if;
     end process;
 
-    -- Logic for storing data into line buffer (BRAM)
+    -- Wishbone DISPLAY SDRAM access logic
     process(i_clk)
     begin
         if rising_edge(i_clk) then

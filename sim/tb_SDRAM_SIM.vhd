@@ -1,5 +1,3 @@
--- TODO: Start writing formal verification for these transactions
-
 library ieee;
 library work;
 
