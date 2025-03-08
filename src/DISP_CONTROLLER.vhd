@@ -35,16 +35,23 @@ entity DISP_CONTROLLER is
 end DISP_CONTROLLER;
 
 architecture behavior of DISP_CONTROLLER is
+    -- Base addresses and sizes
+    constant sdram_dc_base_addr_c  : std_ulogic_vector(31 downto 0) := x"B0000000"; -- wishbone memory base address (default begin of EXTERNAL IO area)
+    constant sdram_dc_size_c       : natural := 8*1024; -- wishbone memory size in bytes, should be smaller than an iCACHE block
+
     type CONTROLLER_STATE is     (VRAM_WRITE, VRAM_READ);
     type WB_TRANSMISION_STATE is (WAITING_ACK, IDLE, RW_DATA, SENDING_DATA);
 
-    signal r_WB_TRANSMISION : WB_TRANSMISION_STATE := SENDING_DATA;
+    signal r_WB_TRANSMISION : WB_TRANSMISION_STATE := IDLE;
     signal SDRAM_ACK_RECEIVED, qi_WB_SDRAM_ACK : std_ulogic;
     signal qi_WB_CPU_CYC : std_ulogic;
     signal BRAM_WRITE_BUFFER : std_ulogic_vector(31 downto 0);
     signal start_rw_op, we_latch, port_req_latch : std_ulogic := '0';
     signal addr_latch, din_latch    : std_ulogic_vector(31 downto 0) := (others => '0');
     signal ds_latch : std_ulogic_vector(3 downto 0)  := (others => '0'); 
+
+    signal base_addresses    : std_ulogic_vector(31 downto 0) := sdram_dc_base_addr_c;
+    signal valid_ram_address : std_ulogic;
 
 begin
 
@@ -61,12 +68,19 @@ begin
         end if;
     end process;
 
+    -- This is the condition that makes sure that the address is 
+    -- within the appropriate range
+    valid_ram_address <= '1' when unsigned(i_WB_CPU_ADDR) >= unsigned(i_WB_CPU_ADDR) and unsigned(i_WB_CPU_ADDR) < unsigned(base_addresses)+sdram_dc_size_c
+                             else '0';
+
     -- Latching inputs from the CPU side?
     process(i_WB_CPU_CYC, i_WB_CPU_STB)
     begin
         start_rw_op    <= '0';
 
-        if i_WB_CPU_CYC='1' and i_WB_CPU_STB='1' then
+        if valid_ram_address = '1' and
+        i_WB_CPU_CYC='1' and i_WB_CPU_STB='1' 
+        then
             start_rw_op    <= '1';
         end if;
     end process;
@@ -76,16 +90,19 @@ begin
     begin
         if rising_edge(i_clk) then
         -- Loop to be constantly sipping data from the SDRAM controller
+            o_WB_SDRAM_STB  <= '0';
+            o_WB_CPU_ACK    <= '0';
             case r_WB_TRANSMISION is
                 when IDLE =>
                     if start_rw_op='1' then
                         r_WB_TRANSMISION <= RW_DATA;
-                        we_latch         <= i_WB_CPU_WE; -- I think this is going to fail
+                        we_latch         <= i_WB_CPU_WE;
                         ds_latch         <= i_WB_CPU_SEL; 
                         din_latch        <= i_WB_CPU_DAT;
                         addr_latch       <= i_WB_CPU_ADDR;
                     end if;
                 when RW_DATA =>
+                    o_WB_SDRAM_STB  <= '1';
                     if we_latch = '0' then
                         o_WB_SDRAM_WE   <= '0';
                     else
@@ -99,7 +116,6 @@ begin
                     r_WB_TRANSMISION <= WAITING_ACK;
 
                 when WAITING_ACK =>
-                    o_WB_SDRAM_STB  <= '0';
                     if SDRAM_ACK_RECEIVED = '1' then
                         if we_latch = '1' then
                             -- I think I don't have to do anything here?
@@ -108,6 +124,7 @@ begin
                         end if;
 
                         -- Resetting signals to default idle state
+                        o_WB_CPU_ACK     <= '1';
                         o_WB_SDRAM_WE    <= '0';
                         o_WB_SDRAM_CYC   <= '0';
                         r_WB_TRANSMISION <= IDLE;

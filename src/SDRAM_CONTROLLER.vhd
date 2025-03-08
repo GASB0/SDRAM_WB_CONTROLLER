@@ -23,7 +23,7 @@ package my_types_pkg is
         wdata : std_ulogic_vector(31 downto 0); -- master write data
         rdata : std_ulogic_vector(31 downto 0); -- master read data
         we    : std_ulogic; -- write enable
-        sel   : std_ulogic_vector(03 downto 0); -- byte enable
+        sel   : std_ulogic_vector(3 downto 0); -- byte enable
         stb   : std_ulogic; -- strobe
         cyc   : std_ulogic; -- valid cycle
         ack   : std_ulogic; -- transfer acknowledge
@@ -70,16 +70,16 @@ entity SDRAM_CONTROLLER is
         i_WB_CPU_CYC  : in  std_ulogic;
 
         -- Graphics controller access
-        o_WB_GC_ACK  : out std_ulogic;
-        o_WB_GC_ERR  : out std_ulogic := '0';
-        i_WB_GC_ADDR : in  std_ulogic_vector( 31 downto 0 );
-        i_WB_GC_DAT  : in  std_ulogic_vector( 31 downto 0 );
-        o_WB_GC_DAT  : out std_ulogic_vector( 31 downto 0 );
-        o_WB_GC_RTY  : out std_ulogic;
-        i_WB_GC_SEL  : in  std_ulogic_vector( 3 downto 0 );
-        i_WB_GC_STB  : in  std_ulogic;
-        i_WB_GC_WE   : in  std_ulogic;
-        i_WB_GC_CYC  : in  std_ulogic
+        o_WB_DC_ACK  : out std_ulogic;
+        o_WB_DC_ERR  : out std_ulogic := '0';
+        i_WB_DC_ADDR : in  std_ulogic_vector( 31 downto 0 );
+        i_WB_DC_DAT  : in  std_ulogic_vector( 31 downto 0 );
+        o_WB_DC_DAT  : out std_ulogic_vector( 31 downto 0 );
+        o_WB_DC_RTY  : out std_ulogic;
+        i_WB_DC_SEL  : in  std_ulogic_vector( 3 downto 0 );
+        i_WB_DC_STB  : in  std_ulogic;
+        i_WB_DC_WE   : in  std_ulogic;
+        i_WB_DC_CYC  : in  std_ulogic
     );
 
 end SDRAM_CONTROLLER;
@@ -87,6 +87,13 @@ end SDRAM_CONTROLLER;
 architecture behavior of SDRAM_CONTROLLER is
     constant REFRESH_CYCLES : unsigned(9 downto 0) := to_unsigned(500, 10);
     constant FREQ : integer := 86_000_000;
+
+    -- simulated external Wishbone memory CPU SDRAM port
+    constant sdram_cpu_base_addr_c : std_ulogic_vector(31 downto 0) := x"A0000000"; -- wishbone memory base address (default begin of EXTERNAL IO area)
+    constant sdram_cpu_size_c      : natural := 8*1024; -- wishbone memory size in bytes, should be smaller than an iCACHE block
+    -- simulated external Wishbone memory GC SDRAM port
+    constant sdram_dc_base_addr_c  : std_ulogic_vector(31 downto 0) := x"B0000000"; -- wishbone memory base address (default begin of EXTERNAL IO area)
+    constant sdram_dc_size_c       : natural := 8*1024; -- wishbone memory size in bytes, should be smaller than an iCACHE block
 
     -- Counter threshold constants for each state
     constant PRECHARGE_ALL_CYCLES : integer := 3;
@@ -157,7 +164,22 @@ architecture behavior of SDRAM_CONTROLLER is
     type wb_ports is array (natural range <>) of wishbone_t;
     signal controller_ports : wb_ports(0 to 1);
 
+    type   base_addresses_t is array (0 to 1) of std_ulogic_vector(31 downto 0);
+    signal base_addresses    : base_addresses_t := (0=>sdram_cpu_base_addr_c, 1=>sdram_dc_base_addr_c);
+
+    type   block_size_t     is array (0 to 1) of natural;
+    signal block_sizes       : block_size_t     := (0=>sdram_cpu_size_c, 1=>sdram_dc_size_c);
+
+    signal valid_ram_address : std_ulogic_vector(1 downto 0) := "00";
 begin
+    -- Debug signals
+    -- valid_addresses_loop: for i in 0 to 1 generate
+        valid_ram_address(0) <= '1' when unsigned(i_WB_CPU_ADDR) >= unsigned(i_WB_CPU_ADDR) and unsigned(i_WB_CPU_ADDR) < unsigned(base_addresses(0))+block_sizes(0)
+                                    else '0';
+        valid_ram_address(1) <= '1' when unsigned(i_WB_DC_ADDR)  >= unsigned(i_WB_DC_ADDR)  and unsigned(i_WB_DC_ADDR)  < unsigned(base_addresses(1))+block_sizes(1)
+                                    else '0';
+    -- end generate valid_addresses_loop;
+
     -- Wiring the wishbone ports
     o_WB_CPU_ACK              <= controller_ports(0).ack;
     controller_ports(0).addr  <= "0"&i_WB_CPU_ADDR(31 downto 1);
@@ -169,15 +191,15 @@ begin
     controller_ports(0).cyc   <= i_WB_CPU_CYC;
     o_WB_CPU_ERR              <= controller_ports(0).err;
 
-    o_WB_GC_ACK               <= controller_ports(1).ack;
-    controller_ports(1).addr  <= "0"&i_WB_GC_ADDR(31 downto 1);
-    o_WB_GC_DAT               <= controller_ports(1).rdata;
-    controller_ports(1).wdata <= i_WB_GC_DAT;
-    controller_ports(1).sel   <= i_WB_GC_SEL;
-    controller_ports(1).stb   <= i_WB_GC_STB;
-    controller_ports(1).we    <= i_WB_GC_WE;
-    controller_ports(1).cyc   <= i_WB_GC_CYC;
-    o_WB_GC_ERR               <= controller_ports(0).err;
+    o_WB_DC_ACK               <= controller_ports(1).ack;
+    controller_ports(1).addr  <= "0"&i_WB_DC_ADDR(31 downto 1);
+    o_WB_DC_DAT               <= controller_ports(1).rdata;
+    controller_ports(1).wdata <= i_WB_DC_DAT;
+    controller_ports(1).sel   <= i_WB_DC_SEL;
+    controller_ports(1).stb   <= i_WB_DC_STB;
+    controller_ports(1).we    <= i_WB_DC_WE;
+    controller_ports(1).cyc   <= i_WB_DC_CYC;
+    o_WB_DC_ERR               <= controller_ports(0).err;
 
     -- NOTE: The 1 bit shift between the address coming from the
     -- wb bus and the address fed to the SDRAM is because the processor
@@ -212,7 +234,7 @@ begin
         end case;
     end process;
 
-    -- Capturing GC and CPU
+    -- Capturing DC and CPU
     wb_latching: for i in 0 to 1 generate
         process(controller_ports(i).cyc, ack_latch(i)) -- maybe add stb here?
         begin
@@ -222,14 +244,17 @@ begin
             din_next(i)      <= (others => '0');
             addr_next(i)     <= (others => '0');
 
-            if controller_ports(i).cyc = '1' and controller_ports(i).stb = '1' then
-            -- Set request flag
+            -- A port request is latched whenever the address range is 
+            -- valid
+            if valid_ram_address(i) = '1' and
+               controller_ports(i).cyc = '1' and controller_ports(i).stb = '1' 
+            then
                 port_req_next(i) <= '1';
                 we_next(i)       <= controller_ports(i).we;
                 ds_next(i)       <= controller_ports(i).sel;
                 din_next(i)      <= controller_ports(i).wdata;
                 addr_next(i)     <= controller_ports(i).addr;
-                oe_next(i) <= not(we_next(i));
+                oe_next(i)       <= not(we_next(i));
             end if;
         end process;
     end generate wb_latching;
@@ -384,7 +409,7 @@ begin
                                     delayed_write <= '0';
                                 end if;
 
-                                -- Latching CPU and GC access related signals
+                                -- Latching CPU and DC access related signals
                                 for i in 0 to 1 loop
                                     din_latch(i)      <= din_next(i);
                                     addr_latch(i)     <= addr_next(i);
@@ -409,7 +434,7 @@ begin
 
                             when 1 => -- 1
                                 if not(delayed_write) = '1' then
-                                -- GC RAS
+                                -- DC RAS
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     if port_req_latch(1) = '1' then
@@ -450,9 +475,9 @@ begin
                                         dq_out  <= din_latch(0)(15 downto 0);
                                     end if;
 
-                                    -- Send GC activate command here or something...
+                                    -- Send DC activate command here or something...
                                 else
-                                    -- GC RAS
+                                    -- DC RAS
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     if port_req_next(1) = '1' then
@@ -467,7 +492,7 @@ begin
                                 end if;
 
                                 if not(delayed_write) = '1' then
-                                    -- GC access
+                                    -- DC access
                                     o_ADDR <= "010"&addr_latch(1)(8 downto 0);
                                     o_BS   <= "01";
                                     if we_latch(1) = '1' and port_req_latch(1)='1' then
@@ -498,7 +523,7 @@ begin
                                 if not(delayed_write) = '1' then
                                     -- CPU DATA
 
-                                    -- GC Data
+                                    -- DC Data
                                     if  we_latch(1) = '1' and port_req_latch(1)='1' then
                                         dq_oen <= '1';
                                     end if;
@@ -513,7 +538,7 @@ begin
 
                             when 6 => -- 6
                                 if not(delayed_write) = '1' then
-                                    -- GC DATA
+                                    -- DC DATA
                                     if port_req_latch(1) = '1' then
                                         --gc_dout_buff(31 downto 16) <= dq_in when we_latch(1) = '0';
                                     end if;
