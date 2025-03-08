@@ -79,7 +79,7 @@ begin
         if rising_edge(i_WB_SDRAM_ACK) then
             if we_latch = '1' then
                 -- I think I don't have to do anything here?
-            else
+            elsif cpu_rw_op_req = '1' then
                 o_WB_CPU_DAT <= i_WB_SDRAM_DAT;
             end if;
         end if;
@@ -87,7 +87,8 @@ begin
 
     -- Wishbone CPU-SDRAM access logic
     process(i_clk)
-        variable dummy_cnt : unsigned(addr_latch'length-1 downto 0) := (others => '0');
+        variable dummy_cnt : unsigned(addr_latch'length-1 downto 0) := x"B0000000";
+        -- this dummy_cnt variable has to increase by 4 increments
     begin
         if rising_edge(i_clk) then
          -- Latch incoming data whenever the CPU is sending something
@@ -107,16 +108,16 @@ begin
 
             case r_WB_TRANSMISION is
                 when IDLE =>
-                    if dummy_cnt >= x"10" then
-                        dummy_cnt := (others => '0');
+                    if dummy_cnt >= x"B0000020" then
+                        dummy_cnt := x"B0000000";
                     else
-                        dummy_cnt := dummy_cnt + 1;
+                        dummy_cnt := dummy_cnt + 4;
                     end if;
 
                     if cpu_rw_op_req = '0' then
                         we_latch   <= '0';
                         ds_latch   <= (others => '0');
-                        addr_latch <= (others => '0');
+                        addr_latch <= std_ulogic_vector(dummy_cnt);
                     end if;
 
                     r_WB_TRANSMISION <= RW_DATA;
