@@ -54,6 +54,7 @@ architecture behavior of DISP_CONTROLLER is
     signal base_addresses    : std_ulogic_vector(31 downto 0) := sdram_dc_base_addr_c;
     signal valid_ram_address : std_ulogic;
 
+    signal dummy_cnt : unsigned(addr_latch'length-1 downto 0) := x"B0000000";
 begin
 
     -- ACK reception logic
@@ -63,6 +64,11 @@ begin
             qi_WB_SDRAM_ACK <= i_WB_SDRAM_ACK;
             if qi_WB_SDRAM_ACK = '0' and i_WB_SDRAM_ACK='1' then
                 SDRAM_ACK_RECEIVED <= '1';
+
+                -- Logic for receiving data from the SDRAM (CPU side)
+                if cpu_rw_op_req = '1' and we_latch='0' then -- this should be dalayed or somehting!
+                    o_WB_CPU_DAT <= i_WB_SDRAM_DAT;
+                end if;
             else
                 SDRAM_ACK_RECEIVED <= '0';
             end if;
@@ -74,22 +80,8 @@ begin
     valid_ram_address <= '1' when unsigned(i_WB_CPU_ADDR) >= unsigned(i_WB_CPU_ADDR) and unsigned(i_WB_CPU_ADDR) < unsigned(base_addresses)+sdram_dc_size_c
                              else '0';
 
-    -- Logic for receiving data from the SDRAM (CPU side)
-    process(i_WB_SDRAM_ACK)
-    begin
-        if rising_edge(i_WB_SDRAM_ACK) then
-            if we_latch = '1' then
-                -- I think I don't have to do anything here?
-            elsif cpu_rw_op_req = '1' then
-                o_WB_CPU_DAT <= i_WB_SDRAM_DAT;
-            end if;
-        end if;
-    end process;
-
     -- Wishbone CPU-SDRAM access logic
     process(i_clk)
-        variable dummy_cnt : unsigned(addr_latch'length-1 downto 0) := x"B0000000";
-        -- this dummy_cnt variable has to increase by 4 increments
     begin
         if rising_edge(i_clk) then
          -- Latch incoming data whenever the CPU is sending something
@@ -109,12 +101,6 @@ begin
 
             case r_WB_TRANSMISION is
                 when IDLE =>
-                    if dummy_cnt >= x"B0000020" then
-                        dummy_cnt := x"B0000000";
-                    else
-                        dummy_cnt := dummy_cnt + 4;
-                    end if;
-
                     we_latch   <= we_next;
                     ds_latch   <= ds_next;
                     addr_latch <= addr_next;
@@ -123,6 +109,13 @@ begin
                         we_latch   <= '0';
                         ds_latch   <= (others => '0');
                         addr_latch <= std_ulogic_vector(dummy_cnt);
+
+                        -- TODO: get rid of this test logic
+                        if dummy_cnt >= x"B0000020" then
+                            dummy_cnt <= x"B0000000";
+                        else
+                            dummy_cnt <= dummy_cnt + 4;
+                        end if;
                     end if;
 
                     r_WB_TRANSMISION <= RW_DATA;
@@ -173,6 +166,11 @@ begin
         if rising_edge(i_clk) then
         -- TODO: Write logic for writing into BRAM memory
         -- BRAM_DATA_IN <= BRAM_WRITE_BUFFER
+
+        -- Well, the logic here should be that whenever I'm in the
+        -- finishing transaction and the cpu_rw_op_req=='0' then I
+        -- should take the read data from the SDRAM and put it in the
+        -- line buffer.
         end if;
     end process;
 end behavior;
