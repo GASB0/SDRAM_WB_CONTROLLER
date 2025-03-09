@@ -46,9 +46,10 @@ architecture behavior of DISP_CONTROLLER is
     signal SDRAM_ACK_RECEIVED, qi_WB_SDRAM_ACK : std_ulogic;
     signal qi_WB_CPU_CYC : std_ulogic;
     signal BRAM_WRITE_BUFFER : std_ulogic_vector(31 downto 0);
-    signal cpu_rw_op_req, cpu_rw_op_req_next, we_latch, port_req_latch : std_ulogic := '0';
-    signal addr_latch, din_latch    : std_ulogic_vector(31 downto 0) := (others => '0');
-    signal ds_latch : std_ulogic_vector(3 downto 0)  := (others => '0'); 
+    signal cpu_rw_op_req, cpu_rw_op_req_next, we_next, we_latch, port_req_latch : std_ulogic := '0';
+    signal addr_latch, addr_next, din_latch, din_next    : std_ulogic_vector(31 downto 0) := (others => '0');
+
+    signal ds_latch, ds_next : std_ulogic_vector(3 downto 0)  := (others => '0'); 
 
     signal base_addresses    : std_ulogic_vector(31 downto 0) := sdram_dc_base_addr_c;
     signal valid_ram_address : std_ulogic;
@@ -96,10 +97,10 @@ begin
                 i_WB_CPU_CYC='1' and i_WB_CPU_STB='1' 
             then
                 cpu_rw_op_req_next <= '1';
-                we_latch           <= i_WB_CPU_WE;
-                ds_latch           <= i_WB_CPU_SEL; 
-                din_latch          <= i_WB_CPU_DAT;
-                addr_latch         <= i_WB_CPU_ADDR;
+                we_next           <= i_WB_CPU_WE;
+                ds_next           <= i_WB_CPU_SEL; 
+                addr_next         <= i_WB_CPU_ADDR;
+                din_latch         <= i_WB_CPU_DAT;
             end if;
 
         -- Loop to be constantly sipping data from the SDRAM controller
@@ -113,6 +114,10 @@ begin
                     else
                         dummy_cnt := dummy_cnt + 4;
                     end if;
+
+                    we_latch   <= we_next;
+                    ds_latch   <= ds_next;
+                    addr_latch <= addr_next;
 
                     if cpu_rw_op_req = '0' then
                         we_latch   <= '0';
@@ -128,7 +133,7 @@ begin
                     else
                         o_WB_SDRAM_WE   <= '1';
                         if cpu_rw_op_req = '1' then
-                            o_WB_SDRAM_DAT  <= din_latch; -- feeding new data to be written
+                            o_WB_SDRAM_DAT  <= din_latch; -- I think I can get this out
                         end if;
                     end if;
 
@@ -141,7 +146,11 @@ begin
                 when WAITING_ACK =>
                     if SDRAM_ACK_RECEIVED = '1' then
                         -- Logic if the request came from the CPU
-                        o_WB_CPU_ACK     <= '1';
+
+                        if cpu_rw_op_req = '1' then
+                            o_WB_CPU_ACK <= '1';
+                        end if;
+
                         r_WB_TRANSMISION <= FINISH_TRASACTION;
                     end if;
 
