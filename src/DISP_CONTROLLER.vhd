@@ -5,6 +5,9 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 use IEEE.MATH_REAL.ALL;
 
+library neorv32;
+use neorv32.neorv32_package.all;
+
 entity DISP_CONTROLLER is 
     port(
         i_clk     : in std_ulogic;
@@ -55,6 +58,12 @@ architecture behavior of DISP_CONTROLLER is
     signal valid_ram_address : std_ulogic;
 
     signal dummy_cnt : unsigned(addr_latch'length-1 downto 0) := x"B0000000";
+
+    -- Block memory related stuff
+      -- bus: main sections --
+      signal dmem_req : bus_req_t;
+      signal dmem_rsp : bus_rsp_t;
+
 begin
 
     -- ACK reception logic
@@ -160,6 +169,25 @@ begin
         end if;
     end process;
 
+
+    -- Line buffer memory --------------------------------------------------
+    -- -------------------------------------------------------------------------------------------
+    -- WARNING: I think that I actually need dualport memory, this dmem seems to be single port!
+    -- how can I implement that type of memory!
+    -- In the document:
+    -- /home/gabriel/Software/Gowin_V1.9.10.01_linux/IDE/doc/EN/SUG550-1.8E_GowinSynthesis User Guide.pdf
+    -- page 16(57) there's a example (5) of how to implement something like this!
+    line_buffer_memory: entity neorv32.neorv32_dmem
+    generic map (
+      DMEM_SIZE => 64*1024
+    )
+    port map (
+      clk_i     => i_clk,
+      rstn_i    => '1',
+      bus_req_i => dmem_req,
+      bus_rsp_o => dmem_rsp
+    );
+
     -- Wishbone DISPLAY SDRAM access logic
     process(i_clk)
     begin
@@ -173,4 +201,7 @@ begin
         -- line buffer.
         end if;
     end process;
+
+    -- NOTE: In the future I can add some simple logic to draw triangles and perform
+    -- some elementary manipulations here!
 end behavior;
