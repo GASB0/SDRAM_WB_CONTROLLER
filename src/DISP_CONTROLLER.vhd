@@ -59,11 +59,20 @@ architecture behavior of DISP_CONTROLLER is
 
     signal dummy_cnt : unsigned(addr_latch'length-1 downto 0) := x"B0000000";
 
-    -- Block memory related stuff
-      -- bus: main sections --
-      signal dmem_req : bus_req_t;
-      signal dmem_rsp : bus_rsp_t;
+    -- Line buffer  signals
+    signal s_lb_data_a : STD_ULOGIC_VECTOR(31 downto 0);
+    signal s_lb_data_b : STD_ULOGIC_VECTOR(31 downto 0);
+    signal s_lb_addr_a : STD_ULOGIC_VECTOR(11 downto 0);
+    signal s_lb_addr_b : STD_ULOGIC_VECTOR(11 downto 0);
+    signal s_lb_clk_a : STD_ULOGIC;
+    signal s_lb_clk_b : STD_ULOGIC;
+    signal s_lb_ce_a : STD_ULOGIC;
+    signal s_lb_ce_b : STD_ULOGIC;
 
+    -- Stuff exclusive to port a
+    signal s_lb_wre_a : STD_ULOGIC;
+    signal s_lb_oce_a : STD_ULOGIC;
+    signal s_lb_rst_a : STD_ULOGIC;
 begin
 
     -- ACK reception logic
@@ -172,28 +181,34 @@ begin
 
     -- Line buffer memory --------------------------------------------------
     -- -------------------------------------------------------------------------------------------
-    -- WARNING: I think that I actually need dualport memory, this dmem seems to be single port!
-    -- how can I implement that type of memory!
-    -- In the document:
-    -- /home/gabriel/Software/Gowin_V1.9.10.01_linux/IDE/doc/EN/SUG550-1.8E_GowinSynthesis User Guide.pdf
-    -- page 16(57) there's a example (5) of how to implement something like this!
-    line_buffer_memory: entity neorv32.neorv32_dmem
-    generic map (
-      DMEM_SIZE => 64*1024
-    )
-    port map (
-      clk_i     => i_clk,
-      rstn_i    => '1',
-      bus_req_i => dmem_req,
-      bus_rsp_o => dmem_rsp
+    DUT_BRAM : entity work.DUALPORT_BRAM
+    port map(
+        --o_data =>,
+        i_data_a =>s_lb_data_a,
+        i_data_b =>s_lb_data_b,
+        i_addr_a =>s_lb_addr_a,
+        i_addr_b =>s_lb_addr_b,
+        i_clk_a =>s_lb_clk_a,
+        i_clk_b =>s_lb_clk_b,
+        i_ce_a =>s_lb_ce_a,
+        i_ce_b =>s_lb_ce_b,
+
+        -- Stuff exclusive to port a
+        i_wre_a =>s_lb_wre_a,
+        i_oce_a =>s_lb_oce_a,
+        i_rst_a =>s_lb_rst_a
     );
 
     -- Wishbone DISPLAY SDRAM access logic
     process(i_clk)
     begin
         if rising_edge(i_clk) then
-        -- TODO: Write logic for writing into BRAM memory
-        -- BRAM_DATA_IN <= BRAM_WRITE_BUFFER
+            if i_WB_CPU_STB = '1' and i_WB_CPU_WE = '1' then
+                s_lb_data_a <= i_WB_CPU_DAT;
+                s_lb_wre_a  <= '1';
+                s_lb_addr_a <= i_WB_CPU_ADDR(s_lb_addr_a'length-1 downto 0);
+                -- Somehow wait a clock cycle before setting s_lb_wre_a back to 0
+            end if;
 
         -- Well, the logic here should be that whenever I'm in the
         -- finishing transaction and the cpu_rw_op_req=='0' then I
